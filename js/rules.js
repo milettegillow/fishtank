@@ -1,6 +1,7 @@
 window.Tank = window.Tank || {};
 
 // Compatibility engine. Pure functions: no DOM access.
+// Pass state.random to make headline choice deterministic; defaults to Math.random.
 (function (T) {
   'use strict';
 
@@ -36,14 +37,233 @@ window.Tank = window.Tank || {};
     return 0;
   }
 
+  const range = (d) => d.temp[0] + '–' + d.temp[1] + DEG;
+
+  // Wording context for a set of records: names them as a natural list with plural-correct verbs.
+  function ctxFor(recs, opts) {
+    opts = opts || {};
+    const groups = groupBy(recs);
+    const names = groups.map((g) => {
+      const n = g.length;
+      const name = opts.plural ? g[0].data.plural : label(g[0].data, n);
+      return opts.counts ? numWord(n).toLowerCase() + ' ' + name : name;
+    });
+    const who = listJoin(names);
+    const pl = opts.plural || recs.length > 1;
+    const c = { who: who, Who: cap(who), pl: pl, n: recs.length, groups: groups, v: (s, p) => (pl ? p : s) };
+    // "neon tetras need 20–26°C and the betta needs 24–30°C"
+    c.needs = (verb) => listJoin(groups.map((g) => {
+      const n = g.length;
+      return (n === 1 ? 'the ' + g[0].data.short + ' ' + verb + 's' : g[0].data.plural + ' ' + verb) + ' ' + range(g[0].data);
+    }));
+    return Object.assign(c, opts.extra || {});
+  }
+
+  // ---- Headline pools ---------------------------------------------------------
+
+  const H = {
+    freshInSalt: [
+      (c) => c.Who + ' in salt water? That’s a pickle',
+      (c) => c.Who + ' took one sip of the sea. Bad idea',
+      (c) => 'Salt water 1, ' + c.who + ' 0',
+      (c) => 'Turns out ' + c.who + ' ' + c.v('isn’t', 'aren’t') + ' seasoned for this',
+      (c) => c.Who + ' ' + c.v('was', 'were') + ' not built for brine'
+    ],
+    saltInFresh: [
+      (c) => c.Who + ' in fresh water? No ocean, no chance',
+      (c) => c.Who + ' went looking for a reef and found a pond',
+      (c) => 'Fresh water and ' + c.who + ': a tragic misunderstanding',
+      (c) => c.Who + ' ' + c.v('needs', 'need') + ' salt. ' + c.v('It', 'They') + ' got none',
+      (c) => 'Lost at sea? Worse. ' + c.Who + ' ' + c.v('was', 'were') + ' lost at lake'
+    ],
+    tooCold: [
+      (c) => 'Brr. Far too cold for the ' + c.who,
+      (c) => c.Who + ' ' + c.v('has', 'have') + ' been put on ice',
+      (c) => 'The ' + c.who + ' froze up. Permanently',
+      (c) => 'Cold water, colder ending for the ' + c.who,
+      (c) => c.Who + ': chilled, then chilled some more'
+    ],
+    tooHot: [
+      (c) => 'Way too hot for the ' + c.who,
+      (c) => 'The ' + c.who + ' ' + c.v('was', 'were') + ' poached. Gently, but still',
+      (c) => c.Who + ' in a hot tub. It did not go well',
+      (c) => 'Someone left the ' + c.who + ' on the stove',
+      (c) => c.Who + ' + ' + c.t + DEG + ' = soup'
+    ],
+    chilly: [
+      (c) => 'The ' + c.who + ' ' + c.v('is', 'are') + ' a bit chilly',
+      (c) => c.Who + ' would like a jumper, please',
+      (c) => c.Who + ': surviving, shivering',
+      (c) => 'Somebody turn the heater up for the ' + c.who,
+      (c) => 'The ' + c.who + ' ' + c.v('is', 'are') + ' sulking in the cold'
+    ],
+    warmish: [
+      (c) => 'The ' + c.who + ' ' + c.v('is', 'are') + ' feeling the heat',
+      (c) => c.Who + ' ' + c.v('is', 'are') + ' sweating it out',
+      (c) => 'Bit tropical for the ' + c.who + ', isn’t it?',
+      (c) => c.Who + ' ' + c.v('wants', 'want') + ' a window open',
+      (c) => 'Mild heatstroke, ' + c.who + ' edition'
+    ],
+    reefInFresh: [
+      (c) => 'Your ' + c.who + ' can’t do fresh water',
+      (c) => 'No salt, no ' + c.who,
+      (c) => 'The ' + c.who + ' dissolved into regret',
+      (c) => c.Who + ' ' + c.v('was', 'were') + ' expecting an ocean',
+      (c) => 'Fresh water ended the ' + c.who + '. Quietly'
+    ],
+    plantInSalt: [
+      (c) => 'Your ' + c.who + ' shrivelled in the brine',
+      (c) => c.Who + ' ' + c.v('has', 'have') + ' been salted. Not in a good way',
+      (c) => 'Seasoned to death: ' + c.who,
+      (c) => 'The ' + c.who + ' turned into seaweed jerky',
+      (c) => c.Who + ' ' + c.v('is', 'are') + ' a lot crispier than before'
+    ],
+    bleached: [
+      (c) => 'Your ' + c.who + ' bleached',
+      (c) => c.Who + ' went white with shock',
+      (c) => c.Who + ': from technicolour to ghost',
+      (c) => 'The ' + c.who + ' lost ' + c.v('its', 'their') + ' colour, then ' + c.v('its', 'their') + ' life',
+      (c) => 'A reef in mourning: ' + c.who
+    ],
+    wilted: [
+      (c) => 'The ' + c.who + ' wilted',
+      (c) => c.Who + ' ' + c.v('has', 'have') + ' given up and gone brown',
+      (c) => 'Brown is not the new green, ' + c.who,
+      (c) => 'The ' + c.who + ' melted into the gravel',
+      (c) => c.Who + ': wilted, wistful, gone'
+    ],
+    decorWarm: [
+      (c) => 'The ' + c.who + ' ' + c.v('is', 'are') + ' sweating',
+      (c) => 'Too toasty for the ' + c.who,
+      (c) => 'Not dead, just overheated: ' + c.who,
+      (c) => c.Who + ' ' + c.v('is', 'are') + ' wilting in the warmth'
+    ],
+    decorCold: [
+      (c) => 'The ' + c.who + ' ' + c.v('is', 'are') + ' struggling in the cold',
+      (c) => 'Bit nippy for the ' + c.who,
+      (c) => 'Not dead, just chilly: ' + c.who,
+      (c) => c.Who + ' ' + c.v('has', 'have') + ' gone dormant and grumpy'
+    ],
+    driftwood: [
+      () => 'Driftwood on a reef?',
+      () => 'Driftwood: still wood, wrong tank',
+      () => 'The driftwood is fine. The water clarity isn’t',
+      () => 'The driftwood brewed your reef a cup of tea'
+    ],
+    eaten: [
+      (c) => 'The ' + c.pred + ' had your ' + c.who + ' for lunch',
+      (c) => c.Who + ': now part of the ' + c.pred,
+      (c) => 'Where did the ' + c.who + ' go? Ask the ' + c.pred,
+      (c) => 'The ' + c.pred + ' is suspiciously full of ' + c.who,
+      (c) => 'The ' + c.pred + ' would like to thank the ' + c.who + ' for dinner'
+    ],
+    clownfish: [
+      (c) => c.Num + '’s a crowd for clownfish',
+      (c) => c.Num + ' clownfish, room for one pair',
+      () => 'The clownfish pair voted the others off the anemone',
+      (c) => 'Found Nemo. Lost ' + c.extra,
+      () => 'Clownfish: strictly a couples’ thing'
+    ],
+    betta: [
+      (c) => c.Num + ' bettas, one winner',
+      () => 'Betta fight club had one rule',
+      () => 'The bettas settled it the old-fashioned way',
+      () => 'There can be only one betta',
+      () => 'Siamese fighting fish did exactly what it says on the tin'
+    ],
+    gramma: [
+      (c) => c.Num + ' royal grammas, one cave',
+      () => 'Royal grammas don’t do flatmates',
+      () => 'A royal feud over one rocky ledge',
+      () => 'The royal grammas are squabbling over the throne'
+    ],
+    crowdedGeneric: [
+      (c) => 'Too many ' + c.who,
+      (c) => c.Who + ' can’t share'
+    ],
+    tangs: [
+      () => 'Tang versus tang',
+      (c) => c.Who + ', zero chill',
+      () => 'Tangs out, scalpels out',
+      () => 'It’s a tang-gle',
+      () => 'Surgeonfish, meet surgeonfish'
+    ],
+    lonely: [
+      (c) => c.Who + ' ' + c.v('is', 'are') + ' not a school',
+      (c) => c.Who + ': not a school, barely a meeting',
+      (c) => 'Safety in numbers? Not for ' + c.who,
+      (c) => c.Who + ' ' + c.v('feels', 'feel') + ' very exposed right now',
+      (c) => 'Table for six? Only ' + c.who + ' showed up'
+    ],
+    school: [
+      (c) => 'A proper school of ' + c.who,
+      (c) => c.Who + ': safety in numbers',
+      (c) => 'Squad goals: ' + c.who,
+      (c) => 'The ' + c.who + ' are schooling beautifully'
+    ],
+    nipFew: [
+      () => 'Fewer tiger barbs, more nipped fins',
+      (c) => 'Under six tiger barbs means more nipping for the ' + c.who,
+      (c) => 'Too few barbs to chase each other, so they chased the ' + c.who,
+      (c) => 'A tiny barb gang is the worst kind. Ask the ' + c.who
+    ],
+    nipMany: [
+      () => 'The tiger barbs can’t resist those fins',
+      () => 'Long fins, meet tiger barbs',
+      (c) => 'Tiger barbs think the ' + c.who + ' ' + c.v('is', 'are') + ' a snack bar',
+      (c) => 'Fin-nipping o’clock for the ' + c.who
+    ],
+    reef: [
+      (c) => 'The ' + c.pred + ' is eating your reef',
+      (c) => 'The ' + c.pred + ' treated the ' + c.who + ' like a buffet',
+      (c) => 'Reef? More like lunch, says the ' + c.pred,
+      (c) => 'Your ' + c.who + ' ' + c.v('has', 'have') + ' a ' + c.pred + ' problem',
+      (c) => 'The ' + c.pred + ' is redecorating with its mouth'
+    ],
+    overstock: [
+      () => 'Standing room only',
+      () => 'It’s rush hour in here',
+      () => 'Too many fish, not enough tank',
+      () => 'The filter has filed a complaint',
+      () => 'Sardines would find this cramped'
+    ],
+    blueTang: [
+      () => 'Just keep swimming… somewhere bigger',
+      () => 'Dory needs a bigger tank. Much bigger',
+      () => 'Blue tangs dream of open reef',
+      () => 'Finding Dory a bigger home'
+    ],
+    noAnemone: [
+      () => 'No anemone for Nemo',
+      () => 'Nemo is house-hunting',
+      () => 'Clownfish without an anemone: possible, but sad',
+      (c) => 'The ' + c.who + ' ' + c.v('has', 'have') + ' nowhere to hide'
+    ],
+    anemone: [
+      () => 'Home sweet anemone',
+      () => 'Nemo has moved in',
+      () => 'Clownfish and anemone: a love story',
+      () => 'The clownfish found a sting-proof sofa'
+    ],
+    celebrate: [
+      () => 'Everyone made it!',
+      () => 'A thriving tank',
+      () => 'Happy fish, happy tank',
+      () => 'Not a single floater',
+      () => 'Nailed it. The fish agree'
+    ]
+  };
+
   function evaluate(state) {
     const tempC = typeof state.temp === 'number' ? state.temp : T.TEMPS[state.temp];
     const water = state.water;
+    const random = state.random || Math.random;
     const outcomes = {};
     const issues = [];
     const positives = [];
     const fish = [];
     const decor = [];
+    const used = [];
 
     (state.items || []).forEach((it) => {
       const data = it.kind === 'fish' ? T.speciesById[it.id] : T.decorById[it.id];
@@ -65,121 +285,157 @@ window.Tank = window.Tank || {};
       });
     }
 
-    function issue(severity, headline, body, recs) {
-      issues.push({ severity: severity, headline: headline, body: body, itemIds: recs.map((r) => r.uid) });
+    // Random template from a pool, never repeating a template within one results panel.
+    function pick(pool, c) {
+      let avail = pool.filter((f) => used.indexOf(f) === -1);
+      if (!avail.length) avail = pool;
+      const f = avail[Math.floor(random() * avail.length)];
+      used.push(f);
+      return f(c);
     }
 
-    // 1. Environment: fish
-    groupBy(fish).forEach((recs) => {
-      const d = recs[0].data;
-      const n = recs.length;
-      const who = label(d, n);
-      if (d.water !== water) {
-        mark(recs, 'dead');
-        if (d.water === 'fresh') {
-          issue('dead', cap(who) + ' in salt water? That’s a pickle',
-            cap(d.plural) + ' are freshwater fish. In salt water their bodies lose water faster than they can replace it, and they quickly dehydrate.', recs);
-        } else {
-          issue('dead', cap(who) + ' in fresh water? No ocean, no chance',
-            cap(d.plural) + ' are marine fish. In fresh water their bodies soak up too much water and their cells can’t cope.', recs);
-        }
-        return;
-      }
+    function issue(rule, severity, pool, c, body, recs) {
+      issues.push({ rule: rule, severity: severity, headline: pick(pool, c), body: body, itemIds: recs.map((r) => r.uid) });
+    }
+
+    // 1. Environment: fish, grouped by cause.
+    const freshInSalt = [];
+    const saltInFresh = [];
+    const tooCold = [];
+    const tooHot = [];
+    const chilly = [];
+    const warmish = [];
+    fish.forEach((r) => {
+      const d = r.data;
+      if (d.water !== water) { (d.water === 'fresh' ? freshInSalt : saltInFresh).push(r); return; }
       const off = tempOff(d.temp, tempC);
-      if (off === 0) return;
-      const range = d.temp[0] + '–' + d.temp[1] + DEG;
-      if (Math.abs(off) > 2) {
-        mark(recs, 'dead');
-        if (off < 0) {
-          issue('dead', 'Brr. Far too cold for the ' + who,
-            cap(d.plural) + ' need ' + range + ' and your tank is ' + tempC + DEG + '. Fish are cold-blooded, so cold water slows their bodies until they can’t feed or fight off disease.', recs);
-        } else {
-          issue('dead', 'Way too hot for the ' + who,
-            cap(d.plural) + ' need ' + range + ' and your tank is ' + tempC + DEG + '. Warm water holds less oxygen while speeding up a fish’s metabolism, so they slowly suffocate.', recs);
-        }
-      } else {
-        mark(recs, 'stressed');
-        const verb = n === 1 ? 'is' : 'are';
-        issue('stressed', off < 0 ? 'The ' + who + ' ' + verb + ' a bit chilly' : 'The ' + who + ' ' + verb + ' feeling the heat',
-          cap(d.plural) + ' prefer ' + range + '. At ' + tempC + DEG + ' they survive, but they’re stressed and more likely to get sick.', recs);
-      }
+      if (off < -2) tooCold.push(r);
+      else if (off > 2) tooHot.push(r);
+      else if (off < 0) chilly.push(r);
+      else if (off > 0) warmish.push(r);
     });
 
-    // 1. Environment: decor
-    groupBy(decor).forEach((recs) => {
-      const d = recs[0].data;
-      const n = recs.length;
-      const who = label(d, n);
+    if (freshInSalt.length) {
+      mark(freshInSalt, 'dead');
+      const c = ctxFor(freshInSalt);
+      issue('water', 'dead', H.freshInSalt, c,
+        c.Who + ' ' + c.v('is a freshwater fish', 'are freshwater fish') + '. In salt water a freshwater fish loses water through its skin and gills faster than it can replace it, and quickly dehydrates.', freshInSalt);
+    }
+    if (saltInFresh.length) {
+      mark(saltInFresh, 'dead');
+      const c = ctxFor(saltInFresh);
+      issue('water', 'dead', H.saltInFresh, c,
+        c.Who + ' ' + c.v('is a marine fish', 'are marine fish') + '. In fresh water a marine fish soaks up more water than its body can pump out, and its cells can’t cope.', saltInFresh);
+    }
+    if (tooCold.length) {
+      mark(tooCold, 'dead');
+      const c = ctxFor(tooCold, { extra: { t: tempC } });
+      issue('temperature', 'dead', H.tooCold, c,
+        'Your tank is ' + tempC + DEG + ', but ' + c.needs('need') + '. Fish are cold-blooded, so cold water slows their bodies until they can’t feed or fight off disease.', tooCold);
+    }
+    if (tooHot.length) {
+      mark(tooHot, 'dead');
+      const c = ctxFor(tooHot, { extra: { t: tempC } });
+      issue('temperature', 'dead', H.tooHot, c,
+        'Your tank is ' + tempC + DEG + ', but ' + c.needs('need') + '. Warm water holds less oxygen while speeding up a fish’s metabolism, so they slowly suffocate.', tooHot);
+    }
+    if (chilly.length) {
+      mark(chilly, 'stressed');
+      const c = ctxFor(chilly, { extra: { t: tempC } });
+      issue('temperature', 'stressed', H.chilly, c,
+        cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they survive, but they’re sluggish, stressed and more likely to get sick.', chilly);
+    }
+    if (warmish.length) {
+      mark(warmish, 'stressed');
+      const c = ctxFor(warmish, { extra: { t: tempC } });
+      issue('temperature', 'stressed', H.warmish, c,
+        cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they survive, but warm water carries less oxygen, so they’re stressed and more likely to get sick.', warmish);
+    }
+
+    // 1. Environment: decor, grouped by cause.
+    const driftInSalt = [];
+    const reefInFresh = [];
+    const plantInSalt = [];
+    const bleached = [];
+    const wilted = [];
+    const decorWarm = [];
+    const decorCold = [];
+    decor.forEach((r) => {
+      const d = r.data;
       const living = d.type === 'coral' || d.type === 'anemone';
-      if (d.type === 'hardscape') {
-        if (d.water !== water) {
-          issue('note', 'Driftwood on a reef?',
-            'Driftwood is harmless, but it slowly leaks tannins that tint water like tea. Reef keepers use rock instead to keep salt water crystal clear.', recs);
-        }
-        return;
-      }
-      if (d.water !== water) {
-        mark(recs, 'dead');
-        if (living) {
-          issue('dead', 'Your ' + who + ' can’t do fresh water',
-            'Corals and anemones are marine animals. Without salt their cells swell with water and they die within hours.', recs);
-        } else {
-          issue('dead', 'Your ' + who + ' got pickled',
-            'Freshwater plants can’t draw water in from salty surroundings, so they shrivel and turn brown.', recs);
-        }
-        return;
-      }
+      if (d.type === 'hardscape') { if (d.water !== water) driftInSalt.push(r); return; }
+      if (d.water !== water) { (living ? reefInFresh : plantInSalt).push(r); return; }
       const off = tempOff(d.temp, tempC);
-      if (off === 0) return;
-      const range = d.temp[0] + '–' + d.temp[1] + DEG;
-      if (Math.abs(off) > 2) {
-        mark(recs, 'dead');
-        if (living) {
-          issue('dead', 'Your ' + who + ' bleached',
-            'At ' + tempC + DEG + ', far outside their ' + range + ', corals spit out the tiny algae that live in them and give them food and colour. What’s left is a white skeleton.', recs);
-        } else {
-          issue('dead', 'The ' + who + ' wilted',
-            cap(d.plural) + ' grow at ' + range + '. At ' + tempC + DEG + ' their leaves yellow, brown and melt away.', recs);
-        }
-      } else {
-        mark(recs, 'stressed');
-        const why = d.id === 'moss-ball'
-          ? 'marimo come from cool lakes, so in warm water they slowly turn brown and fall apart.'
-          : 'they hang on, but lose colour and stop growing.';
-        issue('stressed', d.id === 'moss-ball' && off > 0 ? 'The moss ball is sweating' : 'The ' + who + (n === 1 ? ' is' : ' are') + ' struggling',
-          cap(d.plural) + ' prefer ' + range + '. At ' + tempC + DEG + ' ' + why, recs);
-      }
+      if (Math.abs(off) > 2) (living ? bleached : wilted).push(r);
+      else if (off > 0) decorWarm.push(r);
+      else if (off < 0) decorCold.push(r);
     });
 
-    // 2–3. Predation among survivors
+    if (driftInSalt.length) {
+      issue('water', 'note', H.driftwood, ctxFor(driftInSalt),
+        'Driftwood is harmless, but it slowly leaks tannins that tint water like tea. Reef keepers use rock instead to keep salt water crystal clear.', driftInSalt);
+    }
+    if (reefInFresh.length) {
+      mark(reefInFresh, 'dead');
+      issue('water', 'dead', H.reefInFresh, ctxFor(reefInFresh),
+        'Corals and anemones are marine animals. Without salt their cells swell with water and they die within hours.', reefInFresh);
+    }
+    if (plantInSalt.length) {
+      mark(plantInSalt, 'dead');
+      issue('water', 'dead', H.plantInSalt, ctxFor(plantInSalt),
+        'Freshwater plants can’t draw water in from salty surroundings, so they shrivel and turn brown.', plantInSalt);
+    }
+    if (bleached.length) {
+      mark(bleached, 'dead');
+      const c = ctxFor(bleached);
+      issue('temperature', 'dead', H.bleached, c,
+        'Your tank is ' + tempC + DEG + ', but ' + c.needs('need') + '. Under that stress corals spit out the tiny algae that live in them and give them food and colour, leaving a white skeleton.', bleached);
+    }
+    if (wilted.length) {
+      mark(wilted, 'dead');
+      const c = ctxFor(wilted);
+      issue('temperature', 'dead', H.wilted, c,
+        'Your tank is ' + tempC + DEG + ', but ' + c.needs('need') + '. Too far outside that range, the leaves yellow, brown and melt away.', wilted);
+    }
+    if (decorWarm.length) {
+      mark(decorWarm, 'stressed');
+      const c = ctxFor(decorWarm);
+      const marimo = decorWarm.some((r) => r.id === 'moss-ball') ? ' Marimo come from cool lakes, so in warm water they slowly turn brown and fall apart.' : '';
+      issue('temperature', 'stressed', H.decorWarm, c,
+        cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they hang on, but lose colour and stop growing.' + marimo, decorWarm);
+    }
+    if (decorCold.length) {
+      mark(decorCold, 'stressed');
+      const c = ctxFor(decorCold);
+      issue('temperature', 'stressed', H.decorCold, c,
+        cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they hang on, but growth stalls and older leaves die back.', decorCold);
+    }
+
+    // 2–3. Predation among survivors, one card per predator species.
     const live = fish.filter(alive);
     const preds = live.filter((r) => r.data.mouthSize > 0);
     if (preds.length) {
-      const pairs = {};
-      const pairKeys = [];
+      const byPred = {};
+      const predKeys = [];
       let rr = 0;
       live.forEach((prey) => {
         const able = preds.filter((p) => p.id !== prey.id && prey.data.size <= p.data.mouthSize);
         if (!able.length) return;
         const p = able[rr++ % able.length];
         mark([prey], 'eaten', { eatenBy: p.uid });
-        const key = p.id + '>' + prey.id;
-        if (!pairs[key]) { pairs[key] = { pred: p.data, prey: prey.data, recs: [], preds: [] }; pairKeys.push(key); }
-        pairs[key].recs.push(prey);
-        if (pairs[key].preds.indexOf(p) === -1) pairs[key].preds.push(p);
+        if (!byPred[p.id]) { byPred[p.id] = { pred: p.data, prey: [], preds: [] }; predKeys.push(p.id); }
+        byPred[p.id].prey.push(prey);
+        if (byPred[p.id].preds.indexOf(p) === -1) byPred[p.id].preds.push(p);
       });
-      pairKeys.forEach((k) => {
-        const g = pairs[k];
-        const preyName = label(g.prey, g.recs.length);
-        let head;
-        if (g.pred.id === 'lionfish') head = 'The lionfish had your ' + preyName + ' for lunch';
-        else if (g.pred.id === 'angelfish' && g.prey.id === 'neon-tetra') head = 'The angelfish ate the neons. Classic.';
-        else head = 'The ' + g.pred.short + ' ate your ' + preyName;
-        issue('dead', head, g.pred.predationBody || ('The ' + g.pred.short + ' eats any fish small enough to fit in its mouth.'), g.recs.concat(g.preds));
+      predKeys.forEach((k) => {
+        const g = byPred[k];
+        const c = ctxFor(g.prey, { extra: { pred: g.pred.short } });
+        issue('predation', 'dead', H.eaten, c,
+          g.pred.predationBody || ('The ' + g.pred.short + ' eats any fish small enough to fit in its mouth.'), g.prey.concat(g.preds));
       });
     }
 
-    // 4. Territorial
+    // 4. Territorial: each species has its own reason, so one card per species.
     groupBy(fish.filter(alive)).forEach((recs) => {
       const d = recs[0].data;
       const n = recs.length;
@@ -187,61 +443,63 @@ window.Tank = window.Tank || {};
       const extras = recs.slice(d.maxSameSpecies);
       const sev = d.overLimit || 'stressed';
       mark(extras, sev);
-      let head;
-      let body;
+      const c = ctxFor(recs, { plural: true, extra: { Num: numWord(n), extra: extras.length === 1 ? 'one other' : numWord(extras.length).toLowerCase() + ' others' } });
+      let pool = H.crowdedGeneric;
+      let body = cap(d.plural) + ' don’t tolerate more than ' + d.maxSameSpecies + ' of their own kind.';
       if (d.id === 'clownfish') {
-        head = n === 3 ? 'Three’s a crowd for clownfish' : numWord(n) + ' clownfish, room for one pair';
+        pool = H.clownfish;
         body = 'Clownfish live as a single pair, and that pair will chase and fight other clownfish until they die.';
       } else if (d.id === 'betta') {
-        head = numWord(n) + ' bettas, one winner';
+        pool = H.betta;
         body = 'Male bettas are bred to fight, which is why they’re called Siamese fighting fish. Put two together and they battle until one dies.';
       } else if (d.id === 'royal-gramma') {
-        head = numWord(n) + ' royal grammas, one cave';
+        pool = H.gramma;
         body = 'Royal grammas fiercely guard a cave or ledge against their own kind. In a typical home tank, keep just one.';
-      } else {
-        head = 'Too many ' + d.plural;
-        body = cap(d.plural) + ' don’t tolerate more than ' + d.maxSameSpecies + ' of their own kind.';
       }
-      issue(sev, head, body, sev === 'dead' ? extras : recs);
+      issue('territorial', sev, pool, c, body, sev === 'dead' ? extras : recs);
     });
 
     const tangs = fish.filter((r) => alive(r) && r.data.isTang);
     if (tangs.length > 1) {
       mark(tangs, 'stressed');
-      const ids = groupBy(tangs);
-      const head = ids.length === 1 ? numWord(tangs.length) + ' ' + tangs[0].data.plural + ', zero chill' : 'Tang versus tang';
-      issue('stressed', head,
+      issue('territorial', 'stressed', H.tangs, ctxFor(tangs, { counts: true }),
         'Tangs are fiercely territorial with other tangs and fight with the scalpel-sharp spine by their tail. A home aquarium has room for one tang at most.', tangs);
     }
 
-    // 5. Schooling
+    // 5. Schooling: every under-sized school shares one card.
+    const lonely = [];
+    const schools = [];
     groupBy(fish.filter(alive)).forEach((recs) => {
       const d = recs[0].data;
-      const n = recs.length;
       if (!d.schoolMin) return;
-      if (n < d.schoolMin) {
-        mark(recs, 'stressed');
-        issue('stressed', n === 1 ? 'One lonely ' + d.short : numWord(n) + ' ' + d.plural + ' is not a school',
-          cap(d.plural) + ' are schooling fish and only feel safe in a crowd. With fewer than ' + d.schoolMin + ' they hide, lose colour and stay stressed.', recs);
-      } else {
-        positives.push({ headline: 'A proper school of ' + d.plural,
-          body: 'With ' + n + ' together, they feel safe enough to swim out in the open and show off their colours.',
-          itemIds: recs.map((r) => r.uid) });
-      }
+      if (recs.length < d.schoolMin) { mark(recs, 'stressed'); lonely.push.apply(lonely, recs); }
+      else schools.push.apply(schools, recs);
     });
+    if (lonely.length) {
+      const c = ctxFor(lonely, { counts: true });
+      const species = ctxFor(lonely, { plural: true });
+      const min = Math.max.apply(null, c.groups.map((g) => g[0].data.schoolMin));
+      issue('schooling', 'stressed', H.lonely, c,
+        species.Who + ' are schooling fish and only feel safe in a crowd. With fewer than ' + min + ' they hide, lose colour and stay stressed.', lonely);
+    }
+    if (schools.length) {
+      positives.push({ rule: 'schooling', headline: pick(H.school, ctxFor(schools, { plural: true })),
+        body: 'In a big enough group, schooling fish feel safe enough to swim out in the open and show off their colours.',
+        itemIds: schools.map((r) => r.uid) });
+    }
 
     // 6. Fin nipping
     const nippers = fish.filter((r) => alive(r) && r.data.finNipper);
     const longs = fish.filter((r) => alive(r) && r.data.longFins);
     if (nippers.length && longs.length) {
       mark(longs, 'stressed');
-      const names = listJoin(groupBy(longs).map((g) => g[0].data.short));
+      const c = ctxFor(longs);
       if (nippers.length < 6) {
-        issue('stressed', 'Fewer tiger barbs, more nipped fins',
-          'Tiger barbs nip long, flowing fins like those of the ' + names + '. In a group under six it gets worse: with no school to chase, they turn on their tankmates.', longs.concat(nippers));
+        issue('finNipping', 'stressed', H.nipFew, c,
+          'Tiger barbs nip long, flowing fins like those of the ' + c.who + '. In a group under six it gets worse: with no school to chase, they turn on their tankmates.', longs.concat(nippers));
       } else {
-        issue('stressed', 'The tiger barbs can’t resist those fins',
-          'Even in a proper group, tiger barbs nip slow fish with long, flowing fins like the ' + names + '. Keep them with fast, short-finned tankmates.', longs.concat(nippers));
+        issue('finNipping', 'stressed', H.nipMany, c,
+          'Even in a proper group, tiger barbs nip slow fish with long, flowing fins like the ' + c.who + '. Keep them with fast, short-finned tankmates.', longs.concat(nippers));
       }
     }
 
@@ -250,7 +508,7 @@ window.Tank = window.Tank || {};
     const reef = decor.filter((r) => (r.data.type === 'coral' || r.data.type === 'anemone') && status(r) !== 'dead');
     if (pickers.length && reef.length) {
       mark(reef, 'damaged');
-      issue('stressed', 'The ' + pickers[0].data.short + ' is eating your reef',
+      issue('reefSafe', 'stressed', H.reef, ctxFor(reef, { extra: { pred: pickers[0].data.short } }),
         'Copperband butterflyfish pick at coral polyps and anemones. Reef keepers sometimes add one to clear out pest anemones, then regret it when it starts on the corals.', reef.concat(pickers));
     }
 
@@ -263,25 +521,25 @@ window.Tank = window.Tank || {};
       const goldfish = stocked.filter((r) => r.id === 'goldfish').length;
       const big = stocked.filter((r) => r.data.size >= 20).length;
       const extra = goldfish >= 2 ? ', and goldfish are famously messy' : big ? ', and big fish make big messes' : '';
-      issue('stressed', 'Standing room only',
+      issue('overstock', 'stressed', H.overstock, ctxFor(stocked),
         'Fish waste breaks down into toxic ammonia. This tank holds about ' + pct + '% of what a typical 200-litre aquarium can handle' + extra + ', so the water turns bad for everyone.', stocked);
     }
 
     // 9. Notes
     const blue = fish.filter((r) => r.id === 'blue-tang');
     if (blue.length) {
-      issue('note', 'Just keep swimming… somewhere bigger',
+      issue('tankSize', 'note', H.blueTang, ctxFor(blue),
         'Blue tangs grow to 30 cm and cruise long stretches of reef every day, so experts recommend tanks of well over 500 litres. After Finding Dory, conservationists worried about demand for wild-caught blue tangs, which are rarely bred in captivity.', blue);
     }
     const clowns = fish.filter((r) => r.id === 'clownfish' && alive(r));
     const anemones = decor.filter((r) => r.id === 'anemone' && status(r) === 'ok');
     if (clowns.length) {
       if (anemones.length) {
-        positives.push({ headline: 'Home sweet anemone',
+        positives.push({ rule: 'anemone', headline: pick(H.anemone, ctxFor(clowns)),
           body: 'A protective slime coat lets clownfish hide among stinging tentacles, and in return they clean the anemone and feed it scraps.',
           itemIds: clowns.concat(anemones).map((r) => r.uid) });
       } else {
-        issue('note', 'No anemone for Nemo',
+        issue('anemone', 'note', H.noAnemone, ctxFor(clowns),
           'Clownfish cope without one in an aquarium, but in the wild they never live without a host anemone to hide in.', clowns);
       }
     }
@@ -291,12 +549,11 @@ window.Tank = window.Tank || {};
     let celebration = null;
     const anyBad = fish.concat(decor).some((r) => status(r) !== 'ok');
     if (!anyBad && fish.length) {
-      const schools = fish.some((r) => r.data.schoolMin);
-      const heads = ['Everyone made it!', 'A thriving tank', 'Happy fish, happy tank'];
+      const schooling = fish.some((r) => r.data.schoolMin);
       celebration = {
-        headline: heads[fish.length % heads.length],
+        headline: pick(H.celebrate, {}),
         body: 'Every fish here is at home in ' + water + ' water at ' + tempC + DEG + ', nobody fits in anyone else’s mouth, ' +
-          (schools ? 'the schooling fish have the numbers they need, ' : '') + 'and there’s enough room and filtration for everyone.'
+          (schooling ? 'the schooling fish have the numbers they need, ' : '') + 'and there’s enough room and filtration for everyone.'
       };
     }
 
@@ -319,5 +576,5 @@ window.Tank = window.Tank || {};
     };
   }
 
-  T.Rules = { evaluate: evaluate };
+  T.Rules = { evaluate: evaluate, HEADLINES: H };
 })(window.Tank);

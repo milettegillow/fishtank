@@ -27,6 +27,7 @@
     <div class="decor-layer" id="decorLayer"></div>
     <div class="fish-layer" id="fishLayer"></div>
     <div class="fx-layer" id="fxLayer"></div>
+    <div class="badge-layer" id="badgeLayer"></div>
     <div class="tank-glass"></div>
   </main>
 
@@ -56,6 +57,9 @@
   </section>
 
   <aside class="results glass" id="results" aria-labelledby="resultsSummary" aria-live="polite">
+    <button type="button" class="results-tab" id="resultsTab" aria-controls="resultsScroll" aria-expanded="true" aria-label="Hide results">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <div class="results-scroll" id="resultsScroll">
       <h2 class="results-summary" id="resultsSummary" tabindex="-1"></h2>
       <div class="results-issues" id="resultsIssues"></div>

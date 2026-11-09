@@ -179,6 +179,27 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   100% { transform: scale(4.5); opacity: 0; }
 }
 
+/* Skull badges over dead fish and decor */
+.badge-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.skull {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  pointer-events: none;
+  will-change: transform;
+  filter: drop-shadow(0 2px 3px rgba(0, 15, 25, .6));
+  transition: opacity .5s ease;
+}
+.skull svg { display: block; width: 100%; height: 100%; animation: skull-pop .45s var(--ease) both; }
+.skull.is-fading { opacity: 0; }
+@keyframes skull-pop {
+  from { transform: scale(.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 /* Drag ghost */
 .ghost {
   position: fixed;
@@ -362,15 +383,39 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   z-index: 30;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border-radius: 26px;
   background: var(--glass-strong);
-  transform: translateX(calc(100% + 24px));
+  transform: translateX(calc(100% + 60px));
   visibility: hidden;
   transition: transform .7s var(--ease), visibility 0s linear .7s;
 }
-.results.is-open { transform: none; visibility: visible; transition: transform .7s var(--ease), visibility 0s; }
-.results-scroll { flex: 1; overflow-y: auto; padding: 26px 24px 12px; overscroll-behavior: contain; }
+.results.is-open { transform: none; visibility: visible; transition: transform .3s var(--ease), visibility 0s; }
+.results.is-open.is-entering { transition: transform .7s var(--ease), visibility 0s; }
+.results.is-open.is-collapsed { transform: translateX(calc(100% + 12px)); }
+.results-scroll { flex: 1; overflow-y: auto; padding: 26px 24px 12px; overscroll-behavior: contain; border-radius: 26px 26px 0 0; }
+
+.results-tab {
+  position: absolute;
+  left: -44px;
+  top: 50%;
+  width: 44px;
+  height: 68px;
+  margin-top: -34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--glass-line);
+  border-right: 0;
+  border-radius: 18px 0 0 18px;
+  background: rgba(5, 26, 38, .85);
+  box-shadow: -6px 8px 20px rgba(0, 18, 28, .25);
+  cursor: pointer;
+  transition: background .2s;
+}
+.results-tab:hover { background: rgba(14, 50, 68, .92); }
+.results-tab svg { width: 22px; height: 22px; transition: transform .3s var(--ease); }
+.results.is-collapsed .results-tab svg { transform: rotate(180deg); }
 .results-summary { margin: 0 0 18px; font: 600 36px/1.15 var(--head); outline: none; }
 .results-title { margin: 30px 0 14px; font: 600 30px/1.2 var(--head); }
 .results-actions { display: flex; gap: 10px; padding: 14px 24px 20px; border-top: 1px solid var(--glass-line); }
@@ -485,8 +530,21 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     bottom: 8px;
     width: auto;
     height: min(70vh, 640px);
-    transform: translateY(calc(100% + 16px));
+    transform: translateY(calc(100% + 60px));
   }
+  .results.is-open.is-collapsed { transform: translateY(calc(100% + 8px)); }
+  .results-tab {
+    left: 50%;
+    top: -40px;
+    width: 68px;
+    height: 40px;
+    margin: 0 0 0 -34px;
+    border: 1px solid var(--glass-line);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+  }
+  .results-tab svg { transform: rotate(90deg); }
+  .results.is-collapsed .results-tab svg { transform: rotate(-90deg); }
   .fact-row { grid-template-columns: 110px 1fr; }
 }
 

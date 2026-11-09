@@ -47,8 +47,9 @@ window.Tank = window.Tank || {};
       complete: $('completeBtn'), waterSeg: $('waterSeg'), tempSeg: $('tempSeg'), tempReadout: $('tempReadout'),
       results: $('results'), resultsScroll: $('resultsScroll'), summary: $('resultsSummary'),
       issues: $('resultsIssues'), meet: $('resultsMeet'), tryAgain: $('tryAgainBtn'), startOver: $('startOverBtn'),
-      factPop: $('factPop')
+      factPop: $('factPop'), resultsTab: $('resultsTab')
     };
+    els.resultsTab.addEventListener('click', () => setCollapsed(!els.results.classList.contains('is-collapsed')));
     buildPalette();
     setupTabs();
     segs.push(setupSeg(els.waterSeg, T.state.water, (v) => handlers.onSettings && handlers.onSettings({ water: v })));
@@ -410,7 +411,14 @@ window.Tank = window.Tank || {};
     return c;
   }
 
+  function setCollapsed(on) {
+    els.results.classList.toggle('is-collapsed', on);
+    els.resultsTab.setAttribute('aria-expanded', on ? 'false' : 'true');
+    els.resultsTab.setAttribute('aria-label', on ? 'Show results' : 'Hide results');
+  }
+
   UI.showResults = function (result, items) {
+    setCollapsed(false);
     els.summary.textContent = result.summary.text;
     els.issues.innerHTML = '';
     if (result.celebration) els.issues.appendChild(card('good card--hero', result.celebration.headline, result.celebration.body));
@@ -439,7 +447,8 @@ window.Tank = window.Tank || {};
       decorIds.forEach((id) => els.meet.appendChild(buildFact('decor', id)));
     }
     els.resultsScroll.scrollTop = 0;
-    els.results.classList.add('is-open');
+    els.results.classList.add('is-open', 'is-entering');
+    setTimeout(() => els.results.classList.remove('is-entering'), 750);
     setTimeout(() => {
       try { els.summary.focus({ preventScroll: true }); } catch (e) { els.summary.focus(); }
     }, 80);
@@ -447,5 +456,6 @@ window.Tank = window.Tank || {};
 
   UI.hideResults = function () {
     els.results.classList.remove('is-open');
+    setCollapsed(false);
   };
 })(window.Tank);

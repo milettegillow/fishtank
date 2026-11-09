@@ -21,6 +21,14 @@ Plain HTML/CSS/JS. Open `index.html` directly. Scripts load as classic `<script>
 - **Open Graph.** Title, description and type are set. There is no `og:image` because there's no raster image in the project. Add a 1200×630 screenshot if link previews matter.
 - No shell commands were run apart from the final git commit, so nothing has been executed or tested.
 
+## Results update
+
+- **Collapsible panel.** The results panel has an arrow tab on its left edge. Clicking it collapses the panel off-screen to the right in 300ms and leaves only the tab showing. On narrow screens the panel is a bottom sheet, so the tab sits on its top edge and the panel collapses downwards. The panel always opens expanded. Its first slide-in still takes 0.7s; only collapse and expand take 300ms.
+- **Dead fish.** When the outcome animation starts, dead fish flip and float up straight away. They slow down as they near the top and stop just under the surface, low enough that the skull badge above them stays on screen.
+- **Skull badges.** Skulls are DOM elements in `#badgeLayer`, positioned every frame for fish. Decor gets a skull only when its status is `dead`. Coral bleached by the copperband (`damaged`) doesn't get one. Eaten fish get a skull where they were eaten, which fades after about 1s. "Try again" and "Start over" clear every skull.
+- **Grouped cards.** Issues are grouped by rule and cause. For example, all freshwater fish in salt water share one card, and all prey of one predator species share one card. Territorial cards stay one per species, because each species has its own reason. Each issue now has a `rule` field.
+- **Headline pools.** The pools live in `Tank.Rules.HEADLINES`, with 4–5 templates per rule. Headlines are picked at random without repeating a template within one panel. Passing `state.random` makes the choice deterministic. "That's a pickle" appears exactly once across all pools.
+
 ## Unsure about
 
 - Exact visual tuning of the caustic shader (brightness, scale, gravel size) can only be judged in a browser. The constants live near the top of `main()` in the `FS` string in `js/caustics.js`.

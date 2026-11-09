@@ -55,7 +55,7 @@ window.Tank = window.Tank || {};
     T.Water.init(document.getElementById('water'), document.getElementById('waterFallback'));
     T.Water.setSettings(state.water, state.temp, true);
     T.Bubbles.init(document.getElementById('bubbles'));
-    T.Swim.init(document.getElementById('fishLayer'), document.getElementById('decorLayer'));
+    T.Swim.init(document.getElementById('fishLayer'), document.getElementById('decorLayer'), document.getElementById('badgeLayer'));
     T.UI.init({ onSettings: onSettings, onComplete: onComplete, onTryAgain: onTryAgain, onStartOver: onStartOver });
 
     let pending = false;
