@@ -214,6 +214,63 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   to { transform: translateY(3px); }
 }
 
+/* Food flakes: above decor, below fish */
+.food-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.flake {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -2px 0 0 -2px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .18);
+  will-change: transform;
+  transition: opacity .2s ease;
+}
+.flake.is-eaten { opacity: 0; }
+
+/* Speech bubbles */
+.speech { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
+.speech-box {
+  position: absolute;
+  left: 0;
+  bottom: 10px;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .86);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, .9);
+  color: #12303b;
+  font: 17px/1.3 var(--body);
+  box-shadow: 0 8px 22px rgba(0, 20, 30, .25);
+  transform-origin: calc(50% + var(--tail, 0px)) 100%;
+  animation: speech-pop .35s var(--ease) backwards;
+  transition: opacity .35s ease;
+}
+.speech-box::after {
+  content: "";
+  position: absolute;
+  left: calc(50% + var(--tail, 0px));
+  bottom: -8px;
+  margin-left: -8px;
+  border-style: solid;
+  border-width: 8px 8px 0;
+  border-color: rgba(255, 255, 255, .86) transparent transparent;
+}
+.speech.is-below .speech-box { bottom: auto; top: 10px; transform-origin: calc(50% + var(--tail, 0px)) 0; }
+.speech.is-below .speech-box::after { bottom: auto; top: -8px; border-width: 0 8px 8px; border-color: transparent transparent rgba(255, 255, 255, .86); }
+.speech.is-fading .speech-box { opacity: 0; }
+.speech-emoji { font: 22px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+@keyframes speech-pop {
+  from { transform: scale(.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 /* Drag ghost */
 .ghost {
   position: fixed;

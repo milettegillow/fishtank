@@ -213,7 +213,11 @@ window.Tank = window.Tank || {};
   function onTankDown(ev) {
     if ((locked && !postResults) || drag || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     const hit = ev.target.closest ? ev.target.closest('[data-uid]') : null;
-    if (!hit) return;
+    if (!hit) {
+      // Empty water: a tap here sprinkles food.
+      beginPointer(ev, { type: 'feed' });
+      return;
+    }
     const ent = T.Swim.get(hit.dataset.uid);
     const c = ent && T.Swim.center(ent.uid);
     if (!c) return;
@@ -228,6 +232,7 @@ window.Tank = window.Tank || {};
     d.pointerType = ev.pointerType;
     d.sx = ev.clientX;
     d.sy = ev.clientY;
+    d.t0 = performance.now();
     d.active = false;
     drag = d;
     window.addEventListener('pointermove', onMove, { passive: false });
@@ -285,6 +290,10 @@ window.Tank = window.Tank || {};
       const dx = x - drag.sx;
       const dy = y - drag.sy;
       if (dx * dx + dy * dy < 36) return;
+      if (drag.type === 'feed') {
+        endPointer();
+        return;
+      }
       if (drag.type === 'new' && drag.pointerType !== 'mouse' && Math.abs(dx) > Math.abs(dy) * 1.3) {
         endPointer();
         return;
@@ -302,6 +311,15 @@ window.Tank = window.Tank || {};
     const y = ev.clientY;
     endPointer();
     if (!d.active) {
+      if (d.type === 'feed') {
+        T.Swim.feed(x);
+        return;
+      }
+      if (d.type === 'move' && d.kind === 'fish') {
+        // A quick tap (under ~250ms, barely moved) makes the fish talk.
+        if (performance.now() - d.t0 <= 250) T.Swim.speak(d.uid);
+        return;
+      }
       if (revealed[d.kind + ':' + d.id]) {
         if (factFor === d.kind + ':' + d.id) UI.closeFact();
         else {

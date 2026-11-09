@@ -40,6 +40,24 @@ Plain HTML/CSS/JS. Open `index.html` directly. Scripts load as classic `<script>
 - **Grouped cards.** Issues are grouped by rule and cause. For example, all freshwater fish in salt water share one card, and all prey of one predator species share one card. Territorial cards stay one per species, because each species has its own reason. Each issue now has a `rule` field.
 - **Headline pools.** The pools live in `Tank.Rules.HEADLINES`, with 4–5 templates per rule. Headlines are picked at random without repeating a template within one panel. Passing `state.random` makes the choice deterministic. "That's a pickle" appears exactly once across all pools.
 
+## Roaming, speech bubbles and feeding
+
+- **Roaming fix.** After "Complete tank", fish bunched in a low row because `pickTarget` sent stressed fish into a 30px band at the bottom. An overstocked tank stresses every fish, so they all went there. Now:
+  - Fish roam at least about 30% of the tank's width around their drop point, and sometimes head anywhere: 22% of the time, or 45% when stressed.
+  - Stressed fish choose new targets every 0.25–0.8s, surge and pause briefly, and use every height.
+  - Separation is stronger and pushes fish apart vertically, so they spread into layers instead of a line. Each fish also has a small random depth preference.
+  - Corydoras stay on the floor, and schools still group, now over a wider range.
+- **Taps.** A press that moves less than 6px and is released within 250ms makes the fish talk. A longer press without moving does nothing, and dragging works as before. Tapping a fish no longer opens its fact card; decor and palette clicks still do.
+- **Speech bubbles.** The lines live in `Tank.VOICE` in `species.js`:
+  - Before "Complete tank", each species has 4 personality lines with no compatibility spoilers.
+  - After it, the line is keyed to the fish's outcome badge: dead, cold, hot, territorial, lonely, finNipped, overstock or stressed. There are also `happy` lines for a clean tank, and `ok` (🙂) for a healthy fish in a tank that had problems.
+  - Each fish has one bubble at a time. It follows the fish and fades after 3s. If there's no room above (near the top bar), it appears below the fish.
+- **Feeding.** A tap on empty water drops 6–10 flakes near the surface at that x position, with a cap of 60 on screen; the oldest are dropped first.
+  - Flakes reach the sand in about 7–8s, sit there for up to 2.5s, and always disappear by 10s.
+  - Fish in normal swimming mode notice flakes within about 320px (scaled), swim 1.5× faster towards them, and eat on mouth contact with a small nibble. Dead, hunting or stunned fish ignore food.
+  - Stressed fish check for food every 0.9–1.6s instead of every 0.3s.
+  - Corydoras only go for flakes that have reached the floor. Other fish ignore flakes that have sunk below where they can swim.
+
 ## Unsure about
 
 - Exact visual tuning of the caustic shader (brightness, scale, gravel size) can only be judged in a browser. The constants live near the top of `main()` in the `FS` string in `js/caustics.js`.

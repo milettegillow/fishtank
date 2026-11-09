@@ -189,6 +189,37 @@ window.Tank = window.Tank || {};
     }
   ];
 
+  // Speech bubbles. Before "Complete tank": personality only, no compatibility spoilers.
+  T.VOICE = {
+    species: {
+      'clownfish': [['🧡', 'Orange is very much my colour.'], ['😐', 'I’m a clownfish. That doesn’t mean I’m funny.'], ['👀', 'Just looking for somewhere cosy to hide.'], ['🫧', 'Bloop. That’s all. Bloop.']],
+      'blue-tang': [['🎵', 'Just keep swimming.'], ['🤔', 'Wait, what was I doing?'], ['💙', 'P. Sherman, 42 Wallaby Way… something.'], ['🌊', 'I like long swims. Really long swims.']],
+      'yellow-tang': [['🌞', 'Bright, sunny and only slightly bossy.'], ['🍋', 'I’m basically a swimming lemon.'], ['🥬', 'Is that algae? Asking for me.'], ['🌙', 'I go pale at night. It’s a whole thing.']],
+      'lionfish': [['👀', 'Don’t mind me. Just looking.'], ['😌', 'I’m very, very patient.'], ['🪭', 'Admire the fins. Don’t touch the fins.'], ['🍽️', 'So… what’s for dinner?']],
+      'copperband': [['🥢', 'My nose is a pair of tweezers. You’re welcome.'], ['👁️', 'The eye on my back is fake. Shh.'], ['🔍', 'Ooh, what’s in that crack?'], ['🧐', 'I’m a very picky eater.']],
+      'royal-gramma': [['👑', 'Her Majesty will see you now.'], ['🙃', 'Upside down is the right way up.'], ['💜', 'Purple at the front, party at the back.'], ['🏰', 'Every royal needs a little cave.']],
+      'neon-tetra': [['✨', 'I’m basically a nightlight.'], ['💙', 'Blue stripe, red bottom, zero regrets.'], ['🎉', 'The more the merrier!'], ['🫣', 'Small, but sparkly.']],
+      'betta': [['💅', 'Yes, the fins are real.'], ['🎬', 'I’m the main character.'], ['🫧', 'I built a bubble nest. You may admire it.'], ['🪞', 'Who’s that handsome fish? Oh. It’s me.']],
+      'angelfish': [['😇', 'Angel by name…'], ['🕊️', 'I don’t swim, I glide.'], ['🖤', 'Stripes are very slimming.'], ['🎻', 'Elegance takes practice.']],
+      'tiger-barb': [['🐯', 'Rawr. Ish.'], ['😈', 'I’m not trouble. I’m fun.'], ['🏃', 'Tag! You’re it!'], ['⚡', 'Can’t stop, won’t stop.']],
+      'corydoras': [['😉', 'I just winked at you. Did you see?'], ['🧹', 'Somebody has to tidy the floor.'], ['🫧', 'Brb, quick gulp of air.'], ['👃', 'Snuffle snuffle snuffle.']],
+      'goldfish': [['🤔', 'What was I saying? Oh right: hello!'], ['🍽️', 'Is it dinner time? It feels like dinner time.'], ['🏆', 'Gold. Not silver. Gold.'], ['🫧', 'Blub.']]
+    },
+    // After "Complete tank": keyed by the fish's outcome badge (see Rules: outcome.badge).
+    outcome: {
+      dead: ['I’m not dead, I’m just resting.', 'Floating is a lifestyle choice.', 'Don’t wait up.'],
+      cold: ['Is it just me, or is it freezing?', 'Can someone turn the heater up?', 'I can’t feel my fins.'],
+      hot: ['Way too warm for me.', 'Is the heater stuck on?', 'I’m melting. Slowly.'],
+      territorial: ['This tank isn’t big enough for both of us.', 'Get off my patch.', 'Back off. This spot’s mine.'],
+      lonely: ['Where are the rest of my school?', 'Is it just me? It’s just me.', 'I don’t feel safe on my own.'],
+      finNipped: ['Stop nibbling my fins!', 'Ow. Those were my good fins.', 'Who keeps biting me?'],
+      overstock: ['Too many neighbours, not enough water.', 'It’s so crowded in here.', 'Who invited all these fish?'],
+      stressed: ['I don’t like this one bit.', 'Everything’s a bit much right now.', 'I’m fine. I’m not fine.'],
+      happy: ['Ten out of ten, would live here.', 'Best tank ever.', 'Perfect water, perfect neighbours.'],
+      ok: ['I’m doing fine, thanks for asking.', 'No complaints from me.', 'Can’t complain. Well, I could.']
+    }
+  };
+
   T.speciesById = {};
   T.SPECIES.forEach(function (s) { T.speciesById[s.id] = s; });
   T.decorById = {};

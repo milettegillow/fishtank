@@ -9,9 +9,14 @@ window.Tank = window.Tank || {};
   let fishLayer = null;
   let decorLayer = null;
   let badgeLayer = null;
+  let foodLayer = null;
   const fish = [];
   const decor = [];
+  const flakes = [];
   const looseBadges = [];
+  const MAX_FLAKES = 60;
+  const FLAKE_COLOURS = ['#e2563b', '#f2a33a', '#c9b458', '#7fa34a', '#b5532f', '#e8c76a'];
+  const BUBBLE_TIME = 3;
   // Status badge per outcome reason (see Rules: outcome.badge).
   const EMOJI = {
     dead: '💀',
@@ -22,7 +27,8 @@ window.Tank = window.Tank || {};
     finNipped: '🩹',
     overstock: '😵‍💫',
     stressed: '😰',
-    happy: '💚'
+    happy: '💚',
+    ok: '🙂'
   };
   const BADGE_SIZE = 34;
   let seq = 0;
@@ -161,27 +167,42 @@ window.Tank = window.Tank || {};
     return { x: best.x, y: L.decorBaseY - best.h * 0.6, w: best.w };
   }
 
+  // Roams widely, loosely favouring the drop point; now and then heads anywhere in the tank.
+  // Stressed fish pick new targets much more often, at any height, which reads as erratic.
   function pickTarget(e) {
     const b = bounds(e);
     const sp = e.sp;
     const s = L.scale;
+    const spanX = b.maxX - b.minX;
+    const spanY = b.maxY - b.minY;
     let hx = e.homeX;
     let hy = e.homeY;
-    let R = (70 + sp.display * 0.9) * s;
-    let Ry = R * 0.3;
+    let R = Math.max((160 + sp.display * 1.2) * s, spanX * 0.3);
+    let Ry = Math.max(R * 0.5, spanY * 0.35);
+    let anywhere = Math.random() < (e.stressed ? 0.45 : 0.22);
     if (sp.id === 'clownfish') {
       const an = nearestAnemone(e);
-      if (an) { hx = an.x; hy = an.y; R = Math.max(40 * s, an.w * 0.35); Ry = R * 0.5; }
+      if (an) {
+        hx = an.x; hy = an.y;
+        R = Math.max(40 * s, an.w * 0.35); Ry = R * 0.5;
+        anywhere = e.stressed && Math.random() < 0.3;
+      }
     }
-    if (e.stressed) { hy = Math.max(hy, b.maxY - 30 * s); R *= 1.2; Ry = 30 * s; }
-    e.side = -e.side;
-    let tx = hx + e.side * R * rand(0.4, 1);
-    let ty = hy + rand(-1, 1) * Ry;
-    if (tx < b.minX || tx > b.maxX) { e.side = -e.side; tx = hx + e.side * R * rand(0.4, 1); }
+    let tx;
+    let ty;
+    if (anywhere) {
+      tx = rand(b.minX, b.maxX);
+      ty = rand(b.minY, b.maxY);
+    } else {
+      e.side = -e.side;
+      tx = hx + e.side * R * rand(0.35, 1);
+      ty = hy + rand(-1, 1) * Ry + e.depthBias * spanY * 0.12;
+      if (tx < b.minX || tx > b.maxX) { e.side = -e.side; tx = hx + e.side * R * rand(0.35, 1); }
+    }
     if (has(sp, 'bottom')) ty = b.maxY - rand(0, 4 * s);
     e.tx = clamp(tx, b.minX, b.maxX);
     e.ty = clamp(ty, b.minY, b.maxY);
-    e.timer = e.stressed ? rand(0.35, 0.9) : has(sp, 'hover') ? rand(6, 11) : rand(3, 7);
+    e.timer = e.stressed ? rand(0.25, 0.8) : has(sp, 'hover') ? rand(6, 11) : rand(3, 7);
   }
 
   Swim.addFish = function (id, x, y) {
@@ -199,8 +220,10 @@ window.Tank = window.Tank || {};
       x: x, y: y, homeX: x, homeY: y, vx: 0, vy: 0, tx: x, ty: y,
       facing: facing, face: facing, side: facing, tilt: 0,
       timer: 0, tailPhase: rand(0, 6.28), bob: rand(0, 6.28), finPhase: rand(0, 6.28),
-      speedMul: rand(0.85, 1.15), burst: 0, hang: 0, snuffle: 0,
+      speedMul: rand(0.85, 1.15), burst: 0, hang: 0, snuffle: 0, freeze: 0, depthBias: rand(-1, 1),
       offX: 0, offY: 0, offTimer: 0,
+      food: null, foodT: 0, foodScan: rand(0, 0.3), nibble: 0,
+      bubble: null, bubbleT: 0, bubbleW: 0, lastLine: null, outcomeKey: null,
       mode: 'swim', stressed: false, roll: 1, puff: 0, wagAmp: 1, dragging: false,
       huntQueue: null, huntT: 0, huntSpeed: 0, pause: 0
     };
@@ -236,10 +259,18 @@ window.Tank = window.Tank || {};
       const s = L.scale;
       if (g.timer <= 0 || Math.hypot(cx - g.tx, cy - g.ty) < 30 * s) {
         const b = bounds(list[0]);
-        const R = (120 + 10 * list.length) * s;
+        const spanX = b.maxX - b.minX;
+        const spanY = b.maxY - b.minY;
+        const R = Math.max((160 + 12 * list.length) * s, spanX * 0.28);
         g.side = -g.side;
-        g.tx = clamp(mx + g.side * R * rand(0.4, 1), b.minX, b.maxX);
-        g.ty = has(list[0].sp, 'bottom') ? b.maxY : clamp(my + rand(-1, 1) * R * 0.25, b.minY, b.maxY);
+        if (Math.random() < 0.2) {
+          g.tx = rand(b.minX, b.maxX);
+          g.ty = rand(b.minY, b.maxY);
+        } else {
+          g.tx = clamp(mx + g.side * R * rand(0.4, 1), b.minX, b.maxX);
+          g.ty = clamp(my + rand(-1, 1) * Math.max(R * 0.4, spanY * 0.3), b.minY, b.maxY);
+        }
+        if (has(list[0].sp, 'bottom')) g.ty = b.maxY;
         g.timer = rand(4, 8);
       }
     });
@@ -252,17 +283,19 @@ window.Tank = window.Tank || {};
       for (let j = i + 1; j < fish.length; j++) {
         const b = fish[j];
         if (b.mode !== 'swim' || b.dragging) continue;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const min = (a.w + b.w) * 0.22;
-        const d2 = dx * dx + dy * dy;
-        if (d2 >= min * min || d2 < 0.01) continue;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const min = Math.max((a.w + b.w) * 0.3, (a.h + b.h) * 0.45);
+        let d2 = dx * dx + dy * dy;
+        if (d2 >= min * min) continue;
+        if (d2 < 0.01) { dx = rand(-1, 1); dy = rand(-1, 1); d2 = dx * dx + dy * dy + 0.01; }
         const d = Math.sqrt(d2);
-        const push = ((min - d) / min) * 40 * dt;
+        const push = ((min - d) / min) * 110 * L.scale * dt;
         const ux = dx / d;
-        const uy = dy / d;
-        a.x -= ux * push * 0.5; a.y -= uy * push;
-        b.x += ux * push * 0.5; b.y += uy * push;
+        // Bias the push vertically so fish spread into layers instead of a neat line.
+        const uy = dy / d + (dy >= 0 ? 0.35 : -0.35);
+        a.x -= ux * push * 0.6; a.y -= uy * push;
+        b.x += ux * push * 0.6; b.y += uy * push;
       }
     }
   }
@@ -272,12 +305,22 @@ window.Tank = window.Tank || {};
     const s = L.scale;
     const b = bounds(e);
     const g = schools[e.id];
-    const school = !e.stressed && has(sp, 'school') && g && g.n > 1;
-    if (school) {
+    let food = e.food;
+    if (food) {
+      e.foodT += dt;
+      const reachable = has(sp, 'bottom') || food.y <= b.maxY + e.h * 0.3;
+      if (food.gone || !reachable || e.foodT > 6) { food = e.food = null; e.timer = 0; }
+    }
+    const school = !food && !e.stressed && has(sp, 'school') && g && g.n > 1;
+    if (food) {
+      const dir = food.x >= e.x ? 1 : -1;
+      e.tx = clamp(food.x - dir * e.w * 0.36, b.minX, b.maxX);
+      e.ty = clamp(food.y, b.minY, b.maxY);
+    } else if (school) {
       e.offTimer -= dt;
       if (e.offTimer <= 0) {
-        e.offX = rand(-1, 1) * (28 + g.n * 5) * s;
-        e.offY = rand(-1, 1) * (14 + g.n * 2) * s;
+        e.offX = rand(-1, 1) * (36 + g.n * 6) * s;
+        e.offY = rand(-1, 1) * (20 + g.n * 3) * s;
         e.offTimer = rand(2, 5);
       }
       e.tx = clamp(g.tx + e.offX, b.minX, b.maxX);
@@ -288,24 +331,33 @@ window.Tank = window.Tank || {};
     let dx = e.tx - e.x;
     let dy = e.ty - e.y;
     let dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
-    if (!school && (dist < 10 * s || e.timer <= 0)) {
+    if (!food && !school && (dist < 10 * s || e.timer <= 0)) {
       pickTarget(e);
       dx = e.tx - e.x;
       dy = e.ty - e.y;
       dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
     }
     let speed = sp.speed * s * e.speedMul;
-    if (has(sp, 'dart')) {
-      if (e.burst > 0) { e.burst -= dt; speed *= 2.4; } else if (Math.random() < dt * 0.15) e.burst = rand(0.35, 0.7);
+    if (food) {
+      speed *= 1.5;
+    } else {
+      if (has(sp, 'dart')) {
+        if (e.burst > 0) { e.burst -= dt; speed *= 2.4; } else if (Math.random() < dt * 0.15) e.burst = rand(0.35, 0.7);
+      }
+      if (has(sp, 'hover')) {
+        if (e.hang > 0) { e.hang -= dt; speed *= 0.08; } else if (Math.random() < dt * 0.12) e.hang = rand(1.5, 4);
+      }
+      if (has(sp, 'bottom')) {
+        if (e.snuffle > 0) { e.snuffle -= dt; speed *= 0.15; } else if (Math.random() < dt * 0.2) e.snuffle = rand(0.6, 1.6);
+      }
     }
-    if (has(sp, 'hover')) {
-      if (e.hang > 0) { e.hang -= dt; speed *= 0.08; } else if (Math.random() < dt * 0.12) e.hang = rand(1.5, 4);
+    if (e.stressed) {
+      // Jerky: surges, sudden short pauses and frequent new targets (see pickTarget).
+      speed *= 1.4 + Math.sin(time * 9 + e.bob) * 0.6;
+      if (e.freeze > 0) { e.freeze -= dt; speed *= 0.05; } else if (!food && Math.random() < dt * 0.35) e.freeze = rand(0.25, 0.7);
     }
-    if (has(sp, 'bottom')) {
-      if (e.snuffle > 0) { e.snuffle -= dt; speed *= 0.15; } else if (Math.random() < dt * 0.2) e.snuffle = rand(0.6, 1.6);
-    }
-    if (e.stressed) speed *= 1.6 + Math.sin(time * 7 + e.bob) * 0.5;
-    const arrive = school ? clamp(dist / (30 * s), 0.25, 1.3) : clamp(dist / (50 * s), 0.15, 1);
+    let arrive = school ? clamp(dist / (30 * s), 0.25, 1.3) : clamp(dist / (50 * s), 0.15, 1);
+    if (food) arrive = clamp(dist / (20 * s), 0.35, 1);
     const dvx = (dx / dist) * speed * arrive;
     const dvy = (dy / dist) * speed * arrive * 0.65;
     const k = Math.min(1, dt * (e.stressed ? 4 : 1.8));
@@ -317,12 +369,26 @@ window.Tank = window.Tank || {};
     e.y = clamp(e.y, b.minY, b.maxY);
     if (e.vx > 3) e.facing = 1;
     else if (e.vx < -3) e.facing = -1;
+    if (food) {
+      // Eat on contact with the mouth.
+      const mx = e.x + e.facing * e.w * 0.38;
+      // Bottom dwellers snuffle across the whole sand band, so they reach further down.
+      const yTol = has(sp, 'bottom') ? Math.max(e.h * 0.4, (L.decorBaseY - L.floorTopY) * 0.8) : Math.max(10, e.h * 0.4);
+      if (Math.abs(mx - food.x) < Math.max(9, e.w * 0.14) && Math.abs(e.y - food.y) < yTol) {
+        eatFlake(food);
+        e.food = null;
+        e.nibble = 0.25;
+        e.timer = 0;
+        e.foodScan = rand(0.2, 0.5);
+      }
+    }
     e.roll += (1 - e.roll) * Math.min(1, dt * 3);
     e.wagAmp += (1 - e.wagAmp) * Math.min(1, dt * 2);
   }
 
   function kill(e) {
     e.mode = 'dead';
+    e.food = null;
     e.el.classList.add('is-dead');
     setFishBadge(e, 'dead');
   }
@@ -361,6 +427,8 @@ window.Tank = window.Tank || {};
 
   function eat(prey) {
     prey.mode = 'gone';
+    prey.food = null;
+    removeBubble(prey);
     prey.el.classList.add('is-eaten');
     const b = makeBadge('dead', prey.x, prey.y - prey.h * 0.3 - 14);
     looseBadges.push(b);
@@ -428,6 +496,10 @@ window.Tank = window.Tank || {};
       e.puff -= dt;
       p = 1 + 0.14 * Math.sin(Math.PI * (1 - Math.max(0, e.puff) / 0.55));
     }
+    if (e.nibble > 0) {
+      e.nibble -= dt;
+      p *= 1 + 0.07 * Math.sin(Math.PI * (1 - Math.max(0, e.nibble) / 0.25));
+    }
     const tx = e.x - e.w / 2;
     const ty = e.y - e.h / 2 + bobY;
     e.el.style.transform = 'translate3d(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px,0) rotate(' + e.tilt.toFixed(2) +
@@ -442,6 +514,14 @@ window.Tank = window.Tank || {};
       e.tail.style.transform = 'rotate(' + a.toFixed(2) + 'deg) scaleX(' + sx.toFixed(3) + ')';
     }
     if (e.badge) moveBadge(e.badge, e.x, fishBadgeY(e));
+    if (e.bubble) {
+      e.bubbleT -= dt;
+      if (e.bubbleT <= 0) removeBubble(e);
+      else {
+        if (e.bubbleT < 0.35) e.bubble.classList.add('is-fading');
+        placeBubble(e);
+      }
+    }
     if (e.fins.length && sp.anim.fin) {
       e.finPhase += dt * (has(sp, 'hover') ? 3.2 : 2.4) * struggle;
       for (let i = 0; i < e.fins.length; i++) {
@@ -449,6 +529,151 @@ window.Tank = window.Tank || {};
       }
     }
   }
+
+  // ---- Food ---------------------------------------------------------------
+
+  function removeFlake(f) {
+    f.gone = true;
+    f.el.remove();
+    const i = flakes.indexOf(f);
+    if (i !== -1) flakes.splice(i, 1);
+  }
+
+  function eatFlake(f) {
+    if (f.gone) return;
+    f.gone = true;
+    f.el.classList.add('is-eaten');
+    const i = flakes.indexOf(f);
+    if (i !== -1) flakes.splice(i, 1);
+    setTimeout(() => f.el.remove(), 200);
+  }
+
+  // A pinch of 6–10 flakes near the surface at x.
+  Swim.feed = function (x) {
+    const n = 6 + Math.floor(Math.random() * 5);
+    while (flakes.length + n > MAX_FLAKES && flakes.length) removeFlake(flakes[0]);
+    const s = L.scale;
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('i');
+      el.className = 'flake';
+      const w = rand(3.5, 6.5) * Math.max(0.8, s);
+      el.style.width = w.toFixed(1) + 'px';
+      el.style.height = (w * rand(0.55, 0.9)).toFixed(1) + 'px';
+      el.style.background = FLAKE_COLOURS[Math.floor(Math.random() * FLAKE_COLOURS.length)];
+      el.style.borderRadius = [0, 0, 0, 0].map(() => Math.round(rand(20, 60)) + '%').join(' ');
+      const y0 = L.surfaceY + rand(0, 16 * s);
+      const floorY = L.floorTopY + (L.decorBaseY - L.floorTopY) * rand(0.15, 0.7);
+      const f = {
+        el: el, x0: clamp(x + rand(-20, 20) * s, 4, L.W - 4), y: y0, x: x, floorY: floorY,
+        vy: (floorY - y0) / rand(6.5, 8.5), amp: rand(4, 12) * s, wf: rand(1.2, 2.4), ph: rand(0, 6.28),
+        rot: rand(0, 360), vr: rand(-90, 90), age: 0, landed: false, landT: 0, gone: false
+      };
+      f.x = f.x0;
+      foodLayer.appendChild(el);
+      flakes.push(f);
+    }
+  };
+
+  function updateFlakes(dt) {
+    for (let i = flakes.length - 1; i >= 0; i--) {
+      const f = flakes[i];
+      f.age += dt;
+      if (!f.landed) {
+        f.y += f.vy * dt;
+        f.x = f.x0 + Math.sin(f.age * f.wf + f.ph) * f.amp;
+        f.rot += f.vr * dt;
+        if (f.y >= f.floorY) { f.y = f.floorY; f.landed = true; }
+      } else {
+        f.landT += dt;
+      }
+      const left = Math.min(10 - f.age, 2.5 - f.landT);
+      if (left <= 0) { removeFlake(f); continue; }
+      f.el.style.opacity = left < 0.6 ? (left / 0.6).toFixed(2) : '';
+      f.el.style.transform = 'translate3d(' + f.x.toFixed(1) + 'px,' + f.y.toFixed(1) + 'px,0) rotate(' + f.rot.toFixed(0) + 'deg)';
+    }
+  }
+
+  // Living, free-swimming fish notice nearby food. Stressed fish react more slowly;
+  // bottom dwellers only take flakes that have reached the floor.
+  function lookForFood(e, dt) {
+    if (e.food || !flakes.length) return;
+    e.foodScan -= dt;
+    if (e.foodScan > 0) return;
+    e.foodScan = e.stressed ? rand(0.9, 1.6) : 0.3;
+    const b = bounds(e);
+    const bottom = has(e.sp, 'bottom');
+    const R = 320 * L.scale;
+    let best = null;
+    let bd = R * R;
+    for (let i = 0; i < flakes.length; i++) {
+      const f = flakes[i];
+      if (bottom ? f.y < L.floorTopY - 8 : f.y > b.maxY + e.h * 0.3) continue;
+      const d2 = (f.x - e.x) * (f.x - e.x) + (f.y - e.y) * (f.y - e.y);
+      if (d2 < bd) { bd = d2; best = f; }
+    }
+    if (best) { e.food = best; e.foodT = 0; }
+  }
+
+  // ---- Speech bubbles -------------------------------------------------------
+
+  function removeBubble(e) {
+    if (e.bubble) e.bubble.remove();
+    e.bubble = null;
+    e.bubbleT = 0;
+  }
+
+  function placeBubble(e) {
+    const top = e.y - e.h * 0.5 - (e.badge ? BADGE_SIZE + 2 : 4);
+    const below = top - 70 < (L.topBarBottom || 0) + 6;
+    const y = below ? e.y + e.h * 0.5 + 4 : top;
+    const half = e.bubbleW / 2;
+    const bx = clamp(e.x, half + 8, Math.max(half + 8, L.W - half - 8));
+    const tail = clamp(e.x - bx, -half + 18, half - 18);
+    e.bubble.classList.toggle('is-below', below);
+    e.bubble.style.transform = 'translate3d(' + bx.toFixed(1) + 'px,' + y.toFixed(1) + 'px,0)';
+    if (Math.abs(tail - (e.bubbleTail || 0)) > 0.5) {
+      e.bubbleTail = tail;
+      e.bubble.style.setProperty('--tail', tail.toFixed(1) + 'px');
+    }
+  }
+
+  // A tap on a fish: one short line in its own voice. Before results it's personality;
+  // after results it matches the fish's outcome.
+  Swim.speak = function (uid) {
+    const e = get(uid);
+    if (!e || e.kind !== 'fish' || e.mode === 'gone') return;
+    let emoji;
+    let pool;
+    if (e.outcomeKey) {
+      emoji = EMOJI[e.outcomeKey];
+      pool = T.VOICE.outcome[e.outcomeKey].map((text) => [emoji, text]);
+    } else {
+      pool = T.VOICE.species[e.id];
+    }
+    const options = pool.filter((l) => l[1] !== e.lastLine);
+    const line = (options.length ? options : pool)[Math.floor(Math.random() * (options.length || pool.length))];
+    e.lastLine = line[1];
+    removeBubble(e);
+    const b = document.createElement('div');
+    b.className = 'speech';
+    const box = document.createElement('div');
+    box.className = 'speech-box';
+    const em = document.createElement('span');
+    em.className = 'speech-emoji';
+    em.textContent = line[0];
+    const tx = document.createElement('span');
+    tx.className = 'speech-text';
+    tx.textContent = line[1];
+    box.appendChild(em);
+    box.appendChild(tx);
+    b.appendChild(box);
+    badgeLayer.appendChild(b);
+    e.bubble = b;
+    e.bubbleW = box.offsetWidth;
+    e.bubbleTail = null;
+    e.bubbleT = BUBBLE_TIME;
+    placeBubble(e);
+  };
 
   // ---- Decor --------------------------------------------------------------
 
@@ -490,10 +715,11 @@ window.Tank = window.Tank || {};
 
   // ---- Shared API ---------------------------------------------------------
 
-  Swim.init = function (fl, dl, bl) {
+  Swim.init = function (fl, dl, bl, food) {
     fishLayer = fl;
     decorLayer = dl;
     badgeLayer = bl;
+    foodLayer = food;
     requestAnimationFrame(frame);
   };
 
@@ -516,6 +742,8 @@ window.Tank = window.Tank || {};
     if (i === -1) return;
     const e = list[i];
     list.splice(i, 1);
+    if (e.kind === 'fish') removeBubble(e);
+    if (e.badge) { e.badge.remove(); e.badge = null; }
     if (animate) {
       e.el.classList.add('is-removing');
       setTimeout(() => e.el.remove(), 350);
@@ -527,6 +755,8 @@ window.Tank = window.Tank || {};
   Swim.clear = function () {
     clearTimers();
     clearBadges();
+    fish.forEach(removeBubble);
+    while (flakes.length) removeFlake(flakes[0]);
     fish.concat(decor).forEach((e) => e.el.remove());
     fish.length = 0;
     decor.length = 0;
@@ -588,6 +818,8 @@ window.Tank = window.Tank || {};
     fish.forEach((e) => {
       const o = out[e.uid];
       if (!o) return;
+      e.outcomeKey = o.badge || (result.celebration ? 'happy' : 'ok');
+      removeBubble(e);
       if (o.status === 'eaten') {
         const pred = o.eatenBy ? get(o.eatenBy) : null;
         if (pred && pred.kind === 'fish') (hunts[pred.uid] = hunts[pred.uid] || []).push(e);
@@ -617,6 +849,7 @@ window.Tank = window.Tank || {};
       prey.forEach((p) => { p.mode = 'stunned'; });
       later(() => {
         pred.mode = 'hunt';
+        pred.food = null;
         pred.huntQueue = prey.slice();
         pred.huntT = 0;
         pred.huntSpeed = 0;
@@ -651,6 +884,10 @@ window.Tank = window.Tank || {};
       e.dragging = false;
       e.mode = 'swim';
       e.stressed = false;
+      e.freeze = 0;
+      e.food = null;
+      e.outcomeKey = null;
+      removeBubble(e);
       e.puff = 0;
       e.pause = 0;
       e.huntQueue = null;
@@ -690,13 +927,17 @@ window.Tank = window.Tank || {};
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
     last = now;
     time += dt;
+    updateFlakes(dt);
     updateSchools(dt);
     separate(dt);
     for (let i = 0; i < fish.length; i++) {
       const e = fish[i];
       if (e.mode === 'gone') continue;
       if (!e.dragging) {
-        if (e.mode === 'swim') steer(e, dt);
+        if (e.mode === 'swim') {
+          lookForFood(e, dt);
+          steer(e, dt);
+        }
         else if (e.mode === 'dead') updateDead(e, dt);
         else if (e.mode === 'stunned') updateStunned(e, dt);
         else if (e.mode === 'hunt') updateHunt(e, dt);
