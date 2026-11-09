@@ -24,8 +24,19 @@ Plain HTML/CSS/JS. Open `index.html` directly. Scripts load as classic `<script>
 ## Results update
 
 - **Collapsible panel.** The results panel has an arrow tab on its left edge. Clicking it collapses the panel off-screen to the right in 300ms and leaves only the tab showing. On narrow screens the panel is a bottom sheet, so the tab sits on its top edge and the panel collapses downwards. The panel always opens expanded. Its first slide-in still takes 0.7s; only collapse and expand take 300ms.
-- **Dead fish.** When the outcome animation starts, dead fish flip and float up straight away. They slow down as they near the top and stop just under the surface, low enough that the skull badge above them stays on screen.
-- **Skull badges.** Skulls are DOM elements in `#badgeLayer`, positioned every frame for fish. Decor gets a skull only when its status is `dead`. Coral bleached by the copperband (`damaged`) doesn't get one. Eaten fish get a skull where they were eaten, which fades after about 1s. "Try again" and "Start over" clear every skull.
+- **Dead fish.** When the outcome animation starts, dead fish flip and float up straight away. They settle just below the bottom edge of the heading and top controls (`L.topBarBottom`), leaving room for their badge, and never above the water surface. The top bar is measured on layout, on resize and once fonts have loaded.
+- **Status badges.** Each fish gets an emoji badge in `#badgeLayer` that follows it every frame and bobs gently. `Rules.evaluate` gives every fish `outcome.badge`:
+  - Dead or eaten fish get 💀.
+  - Stressed fish get the most severe of their reasons, in this order: 😠 territorial, 🩹 fin-nipped, 🥶 too cold, 🥵 too warm, 😢 too few to school, 😵‍💫 overstocked, and 😰 for anything else.
+  - Fish with no problems get no badge. If the whole tank passes, every fish gets a 💚 that fades after about 3.5s.
+  - Eaten fish leave a 💀 where they were eaten, which fades away.
+  - Dead decor gets 💀.
+- **After results.** While the results show (panel open or collapsed), any fish still in the tank, alive or dead, can be dragged. Dragging doesn't re-run the evaluation and can't remove fish. Dead fish drift back up to their resting line. Decor stays locked.
+- **Collapsed panel.** While the panel is collapsed, "Try again" replaces "Complete tank" in the top bar.
+- **Try again vs Start over.**
+  - "Try again" puts every fish back at its placed position (or where you last dropped it), the right way up and healthy, and clears all styling and badges.
+  - "Start over" empties the tank and resets water and temperature to Salt/Tropical. Species you've already revealed stay unlocked.
+- **Palette outlines.** The gold outline on some palette cards was the "revealed species" ring. It has been removed, so all cards look the same. Revealed species still unlock their fact cards.
 - **Grouped cards.** Issues are grouped by rule and cause. For example, all freshwater fish in salt water share one card, and all prey of one predator species share one card. Territorial cards stay one per species, because each species has its own reason. Each issue now has a `rule` field.
 - **Headline pools.** The pools live in `Tank.Rules.HEADLINES`, with 4–5 templates per rule. Headlines are picked at random without repeating a template within one panel. Passing `state.random` makes the choice deterministic. "That's a pickle" appears exactly once across all pools.
 

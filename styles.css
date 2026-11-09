@@ -86,6 +86,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .fish svg { width: 100%; height: 100%; }
 .fish svg *, .decor svg * { pointer-events: visiblePainted; cursor: grab; }
 .is-locked .fish svg *, .is-locked .decor svg * { cursor: default; }
+.has-results .fish svg * { cursor: grab; }
+.fish.is-eaten svg * { pointer-events: none; }
 .tail, .fin, .sway { transform-box: view-box; }
 
 .fish.is-dragging .fish-body,
@@ -179,25 +181,37 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   100% { transform: scale(4.5); opacity: 0; }
 }
 
-/* Skull badges over dead fish and decor */
+/* Status emoji badges over fish and dead decor */
 .badge-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
-.skull {
+.badge {
   position: absolute;
   left: 0;
   top: 0;
-  width: 30px;
-  height: 30px;
-  margin: -15px 0 0 -15px;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
   pointer-events: none;
   will-change: transform;
-  filter: drop-shadow(0 2px 3px rgba(0, 15, 25, .6));
-  transition: opacity .5s ease;
+  transition: opacity .6s ease;
 }
-.skull svg { display: block; width: 100%; height: 100%; animation: skull-pop .45s var(--ease) both; }
-.skull.is-fading { opacity: 0; }
-@keyframes skull-pop {
+.badge span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font: 24px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  filter: drop-shadow(0 2px 3px rgba(0, 15, 25, .55));
+  animation: badge-pop .45s var(--ease) both, badge-bob 1.8s ease-in-out .45s infinite alternate;
+}
+.badge.is-fading { opacity: 0; }
+@keyframes badge-pop {
   from { transform: scale(.3); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+@keyframes badge-bob {
+  from { transform: translateY(-2px); }
+  to { transform: translateY(3px); }
 }
 
 /* Drag ghost */
@@ -367,7 +381,6 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 .pal-item:hover { transform: translateY(-4px) scale(1.04); background: rgba(255, 255, 255, .1); }
 .pal-item.is-source { opacity: .45; }
-.pal-item.is-known { box-shadow: inset 0 0 0 1px rgba(255, 214, 120, .5); }
 .pal-art { height: 54px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .pal-art svg { height: 100%; width: auto; max-width: 104px; filter: drop-shadow(0 4px 6px rgba(0, 20, 30, .25)); }
 .pal-name { text-align: center; line-height: 1.15; }

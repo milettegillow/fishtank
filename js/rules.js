@@ -9,6 +9,8 @@ window.Tank = window.Tank || {};
   const NUM = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
   const SEV = { dead: 0, stressed: 1, note: 2 };
   const DEG = '°C';
+  // Stress reasons, most severe first.
+  const BADGE_PRIORITY = ['territorial', 'finNipped', 'cold', 'hot', 'lonely', 'overstock'];
 
   const numWord = (n) => (n < NUM.length ? NUM[n] : String(n));
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -285,6 +287,14 @@ window.Tank = window.Tank || {};
       });
     }
 
+    // Records why a fish is stressed, so the tank can show the right status badge.
+    function why(recs, reason) {
+      recs.forEach((r) => {
+        const o = outcomes[r.uid];
+        (o.reasons = o.reasons || []).push(reason);
+      });
+    }
+
     // Random template from a pool, never repeating a template within one results panel.
     function pick(pool, c) {
       let avail = pool.filter((f) => used.indexOf(f) === -1);
@@ -341,12 +351,14 @@ window.Tank = window.Tank || {};
     }
     if (chilly.length) {
       mark(chilly, 'stressed');
+      why(chilly, 'cold');
       const c = ctxFor(chilly, { extra: { t: tempC } });
       issue('temperature', 'stressed', H.chilly, c,
         cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they survive, but they’re sluggish, stressed and more likely to get sick.', chilly);
     }
     if (warmish.length) {
       mark(warmish, 'stressed');
+      why(warmish, 'hot');
       const c = ctxFor(warmish, { extra: { t: tempC } });
       issue('temperature', 'stressed', H.warmish, c,
         cap(c.needs('prefer')) + '. At ' + tempC + DEG + ' they survive, but warm water carries less oxygen, so they’re stressed and more likely to get sick.', warmish);
@@ -443,6 +455,7 @@ window.Tank = window.Tank || {};
       const extras = recs.slice(d.maxSameSpecies);
       const sev = d.overLimit || 'stressed';
       mark(extras, sev);
+      why(extras, 'territorial');
       const c = ctxFor(recs, { plural: true, extra: { Num: numWord(n), extra: extras.length === 1 ? 'one other' : numWord(extras.length).toLowerCase() + ' others' } });
       let pool = H.crowdedGeneric;
       let body = cap(d.plural) + ' don’t tolerate more than ' + d.maxSameSpecies + ' of their own kind.';
@@ -462,6 +475,7 @@ window.Tank = window.Tank || {};
     const tangs = fish.filter((r) => alive(r) && r.data.isTang);
     if (tangs.length > 1) {
       mark(tangs, 'stressed');
+      why(tangs, 'territorial');
       issue('territorial', 'stressed', H.tangs, ctxFor(tangs, { counts: true }),
         'Tangs are fiercely territorial with other tangs and fight with the scalpel-sharp spine by their tail. A home aquarium has room for one tang at most.', tangs);
     }
@@ -472,7 +486,7 @@ window.Tank = window.Tank || {};
     groupBy(fish.filter(alive)).forEach((recs) => {
       const d = recs[0].data;
       if (!d.schoolMin) return;
-      if (recs.length < d.schoolMin) { mark(recs, 'stressed'); lonely.push.apply(lonely, recs); }
+      if (recs.length < d.schoolMin) { mark(recs, 'stressed'); why(recs, 'lonely'); lonely.push.apply(lonely, recs); }
       else schools.push.apply(schools, recs);
     });
     if (lonely.length) {
@@ -493,6 +507,7 @@ window.Tank = window.Tank || {};
     const longs = fish.filter((r) => alive(r) && r.data.longFins);
     if (nippers.length && longs.length) {
       mark(longs, 'stressed');
+      why(longs, 'finNipped');
       const c = ctxFor(longs);
       if (nippers.length < 6) {
         issue('finNipping', 'stressed', H.nipFew, c,
@@ -517,6 +532,7 @@ window.Tank = window.Tank || {};
     const load = stocked.reduce((sum, r) => sum + r.data.bioload, 0);
     if (load > T.CAPACITY) {
       mark(stocked, 'stressed');
+      why(stocked, 'overstock');
       const pct = Math.round((load / T.CAPACITY) * 100);
       const goldfish = stocked.filter((r) => r.id === 'goldfish').length;
       const big = stocked.filter((r) => r.data.size >= 20).length;
@@ -545,6 +561,15 @@ window.Tank = window.Tank || {};
     }
 
     issues.sort((a, b) => SEV[a.severity] - SEV[b.severity]);
+
+    // One status badge per fish: the most severe of its problems.
+    fish.forEach((r) => {
+      const o = outcomes[r.uid];
+      const rs = o.reasons || [];
+      if (o.status === 'dead' || o.status === 'eaten') o.badge = 'dead';
+      else if (o.status === 'stressed') o.badge = BADGE_PRIORITY.find((p) => rs.indexOf(p) !== -1) || 'stressed';
+      else o.badge = null;
+    });
 
     let celebration = null;
     const anyBad = fish.concat(decor).some((r) => status(r) !== 'ok');

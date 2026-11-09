@@ -12,11 +12,19 @@ window.Tank = window.Tank || {};
   const fish = [];
   const decor = [];
   const looseBadges = [];
-  const SKULL = '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
-    '<path d="M16 3C9 3 4.5 7.8 4.5 14c0 3.6 1.6 6.4 4 8v4.5c0 .9.7 1.5 1.6 1.5h11.8c.9 0 1.6-.6 1.6-1.5V22c2.4-1.6 4-4.4 4-8C27.5 7.8 23 3 16 3z" fill="#f7f1e3"/>' +
-    '<circle cx="11.2" cy="14.5" r="3.3" fill="#2a2420"/><circle cx="20.8" cy="14.5" r="3.3" fill="#2a2420"/>' +
-    '<path d="M16 18.6l-1.9 3.1h3.8z" fill="#2a2420"/>' +
-    '<path d="M12.6 24.2v3.4M16 24.2v3.4M19.4 24.2v3.4" stroke="#2a2420" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  // Status badge per outcome reason (see Rules: outcome.badge).
+  const EMOJI = {
+    dead: '💀',
+    cold: '🥶',
+    hot: '🥵',
+    territorial: '😠',
+    lonely: '😢',
+    finNipped: '🩹',
+    overstock: '😵‍💫',
+    stressed: '😰',
+    happy: '💚'
+  };
+  const BADGE_SIZE = 34;
   let seq = 0;
   let order = 0;
   let schools = {};
@@ -31,31 +39,70 @@ window.Tank = window.Tank || {};
   function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
   function clearTimers() { timers.forEach(clearTimeout); timers = []; }
 
-  // ---- Skull badges -------------------------------------------------------
+  // ---- Status badges ------------------------------------------------------
 
-  function makeBadge(x, y) {
+  function makeBadge(key, x, y) {
     const b = document.createElement('div');
-    b.className = 'skull';
-    b.innerHTML = SKULL;
+    b.className = 'badge';
+    const s = document.createElement('span');
+    s.textContent = EMOJI[key] || EMOJI.stressed;
+    s.style.animationDelay = '0s, ' + (0.45 + Math.random() * 0.8).toFixed(2) + 's';
+    b.appendChild(s);
     moveBadge(b, x, y);
     badgeLayer.appendChild(b);
     return b;
   }
 
   function moveBadge(b, x, y) {
-    b.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + Math.max(18, y).toFixed(1) + 'px,0)';
+    b.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + Math.max(BADGE_SIZE / 2 + 4, y).toFixed(1) + 'px,0)';
+  }
+
+  // Badges on fish follow them every frame; replacing a fish's badge swaps the emoji.
+  function setFishBadge(e, key) {
+    if (e.badge) {
+      if (e.badgeKey === key) return;
+      e.badge.remove();
+    }
+    e.badge = makeBadge(key, e.x, fishBadgeY(e));
+    e.badgeKey = key;
+  }
+
+  function fadeFishBadge(e) {
+    const b = e.badge;
+    if (!b) return;
+    b.classList.add('is-fading');
+    later(() => {
+      b.remove();
+      if (e.badge === b) { e.badge = null; e.badgeKey = null; }
+    }, 650);
   }
 
   function clearBadges() {
     fish.concat(decor).forEach((e) => {
-      if (e.badge) { e.badge.remove(); e.badge = null; }
+      if (e.badge) e.badge.remove();
+      e.badge = null;
+      e.badgeKey = null;
     });
     looseBadges.forEach((b) => b.remove());
     looseBadges.length = 0;
   }
 
-  const fishBadgeY = (e) => e.y - e.h * 0.5 - 16;
-  const decorBadgeY = (d) => L.decorBaseY - d.h - 14;
+  const fishBadgeY = (e) => e.y - e.h * 0.5 - BADGE_SIZE * 0.55;
+  const decorBadgeY = (d) => L.decorBaseY - d.h - BADGE_SIZE * 0.45;
+
+  // Height of the heading and top controls, so floating fish settle below them.
+  function measureTopBar() {
+    const bar = document.querySelector('.topbar');
+    let bottom = 0;
+    if (bar) {
+      Array.prototype.forEach.call(bar.children, (c) => {
+        if (c.offsetParent === null) return;
+        bottom = Math.max(bottom, c.getBoundingClientRect().bottom);
+      });
+    }
+    L.topBarBottom = bottom;
+  }
+  Swim.measureTopBar = measureTopBar;
 
   T.computeLayout = function () {
     const W = window.innerWidth;
@@ -73,6 +120,7 @@ window.Tank = window.Tank || {};
     L.surfaceFrac = 1 - (L.surfaceY * 0.45) / H;
     L.scale = clamp(Math.min(H / 900, W / 1280), 0.6, 1.3);
     document.documentElement.style.setProperty('--drawer-h', drawerH + 'px');
+    measureTopBar();
   };
 
   function get(uid) {
@@ -276,18 +324,28 @@ window.Tank = window.Tank || {};
   function kill(e) {
     e.mode = 'dead';
     e.el.classList.add('is-dead');
-    if (!e.badge) e.badge = makeBadge(e.x, fishBadgeY(e));
+    setFishBadge(e, 'dead');
   }
 
-  // Belly-up and floating: quick at first, easing to rest just under the surface.
+  // Where a dead fish comes to rest: just below the heading and top controls,
+  // with room for its badge, and never above the water surface.
+  const deadRestY = (e) => Math.max(L.surfaceY + e.h * 0.2, (L.topBarBottom || 0) + 8 + BADGE_SIZE + e.h * 0.5);
+
+  // Belly-up and floating: quick at first, easing to rest near the top.
   function updateDead(e, dt) {
     const b = bounds(e);
-    const rest = Math.max(L.surfaceY + e.h * 0.2, e.h * 0.5 + 44);
-    const dist = Math.max(0, e.y - rest);
+    const rest = Math.min(deadRestY(e), b.maxY);
     e.vx *= 1 - Math.min(1, dt * 2);
-    e.vy += (-Math.min(90 * L.scale, dist * 0.9) - e.vy) * Math.min(1, dt * 2.5);
     e.x += e.vx * dt;
-    e.y = Math.max(rest, e.y + e.vy * dt);
+    if (e.y < rest) {
+      // Dropped above the resting line: sink gently back down to it.
+      e.vy = 0;
+      e.y += (rest - e.y) * Math.min(1, dt * 2.5);
+    } else {
+      const dist = e.y - rest;
+      e.vy += (-Math.min(90 * L.scale, dist * 0.9) - e.vy) * Math.min(1, dt * 2.5);
+      e.y = Math.max(rest, e.y + e.vy * dt);
+    }
     e.x = clamp(e.x, b.minX, b.maxX);
     e.roll += (-1 - e.roll) * Math.min(1, dt * 2.2);
     e.wagAmp *= 1 - Math.min(1, dt * 3);
@@ -304,9 +362,10 @@ window.Tank = window.Tank || {};
   function eat(prey) {
     prey.mode = 'gone';
     prey.el.classList.add('is-eaten');
-    const b = makeBadge(prey.x, prey.y - prey.h * 0.3 - 12);
+    const b = makeBadge('dead', prey.x, prey.y - prey.h * 0.3 - 14);
     looseBadges.push(b);
     later(() => b.classList.add('is-fading'), 900);
+    later(() => b.remove(), 1600);
   }
 
   function updateHunt(e, dt) {
@@ -536,9 +595,22 @@ window.Tank = window.Tank || {};
       } else if (o.status === 'dead') {
         kill(e);
       } else if (o.status === 'stressed') {
-        later(() => { e.stressed = true; e.timer = 0; e.el.classList.add('is-stressed'); }, rand(150, 1100));
+        later(() => {
+          e.stressed = true;
+          e.timer = 0;
+          e.el.classList.add('is-stressed');
+          setFishBadge(e, o.badge || 'stressed');
+        }, rand(150, 1100));
       }
     });
+    if (result.celebration) {
+      fish.forEach((e) => {
+        later(() => {
+          setFishBadge(e, 'happy');
+          later(() => fadeFishBadge(e), 3500);
+        }, rand(200, 700));
+      });
+    }
     Object.keys(hunts).forEach((pid) => {
       const pred = get(pid);
       const prey = hunts[pid];
@@ -558,7 +630,7 @@ window.Tank = window.Tank || {};
       later(() => {
         if (o.status === 'stressed') { d.el.classList.add('is-pale'); return; }
         d.dead = true;
-        if (o.status === 'dead' && !d.badge) d.badge = makeBadge(d.x, decorBadgeY(d));
+        if (o.status === 'dead' && !d.badge) d.badge = makeBadge('dead', d.x, decorBadgeY(d));
         if (d.d.type === 'plant') d.el.classList.add('is-wilted');
         else if (d.d.type !== 'hardscape') d.el.classList.add('is-bleached');
       }, rand(100, 900));
@@ -570,11 +642,13 @@ window.Tank = window.Tank || {};
     clearTimers();
     clearBadges();
     fish.forEach((e) => {
-      if (e.mode === 'gone') {
-        e.x = e.homeX;
-        e.y = e.homeY;
-        e.roll = 1;
-      }
+      // Back to where it was placed, the right way up and at full health.
+      e.x = e.homeX;
+      e.y = e.homeY;
+      e.roll = 1;
+      e.tilt = 0;
+      e.wagAmp = 1;
+      e.dragging = false;
       e.mode = 'swim';
       e.stressed = false;
       e.puff = 0;
@@ -582,7 +656,7 @@ window.Tank = window.Tank || {};
       e.huntQueue = null;
       e.vx = 0;
       e.vy = 0;
-      e.el.classList.remove('is-dead', 'is-stressed', 'is-eaten');
+      e.el.classList.remove('is-dead', 'is-stressed', 'is-eaten', 'is-dragging', 'will-remove');
       pickTarget(e);
     });
     decor.forEach((d) => {

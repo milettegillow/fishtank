@@ -13,6 +13,9 @@ window.Tank = window.Tank || {};
   let locked = false;
   let drag = null;
   let factFor = null;
+  let postResults = false;
+  let waterSeg = null;
+  let tempSeg = null;
   const segs = [];
   const revealed = loadRevealed();
 
@@ -47,20 +50,22 @@ window.Tank = window.Tank || {};
       complete: $('completeBtn'), waterSeg: $('waterSeg'), tempSeg: $('tempSeg'), tempReadout: $('tempReadout'),
       results: $('results'), resultsScroll: $('resultsScroll'), summary: $('resultsSummary'),
       issues: $('resultsIssues'), meet: $('resultsMeet'), tryAgain: $('tryAgainBtn'), startOver: $('startOverBtn'),
-      factPop: $('factPop'), resultsTab: $('resultsTab')
+      factPop: $('factPop'), resultsTab: $('resultsTab'), topTryAgain: $('topTryAgainBtn')
     };
     els.resultsTab.addEventListener('click', () => setCollapsed(!els.results.classList.contains('is-collapsed')));
     buildPalette();
     setupTabs();
-    segs.push(setupSeg(els.waterSeg, T.state.water, (v) => handlers.onSettings && handlers.onSettings({ water: v })));
-    segs.push(setupSeg(els.tempSeg, T.state.temp, (v) => {
+    waterSeg = setupSeg(els.waterSeg, T.state.water, (v) => handlers.onSettings && handlers.onSettings({ water: v }));
+    tempSeg = setupSeg(els.tempSeg, T.state.temp, (v) => {
       setTempReadout(v);
       if (handlers.onSettings) handlers.onSettings({ temp: v });
-    }));
+    });
+    segs.push(waterSeg, tempSeg);
     setTempReadout(T.state.temp);
 
     els.complete.addEventListener('click', () => handlers.onComplete && handlers.onComplete());
     els.tryAgain.addEventListener('click', () => handlers.onTryAgain && handlers.onTryAgain());
+    els.topTryAgain.addEventListener('click', () => handlers.onTryAgain && handlers.onTryAgain());
     els.startOver.addEventListener('click', () => handlers.onStartOver && handlers.onStartOver());
     els.tank.addEventListener('pointerdown', onTankDown);
 
@@ -111,8 +116,15 @@ window.Tank = window.Tank || {};
       });
     });
     select(value, true);
-    return { buttons: buttons, measure: measure };
+    return { buttons: buttons, measure: measure, select: select };
   }
+
+  // Sets the toggles without firing change handlers (used by "Start over").
+  UI.setSettings = function (water, temp) {
+    waterSeg.select(water, true);
+    tempSeg.select(temp, true);
+    setTempReadout(temp);
+  };
 
   function setupTabs() {
     const tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
@@ -158,7 +170,6 @@ window.Tank = window.Tank || {};
         b.dataset.id = d.id;
         b.innerHTML = '<span class="pal-art">' + T.Art.render(kind, d.id).svg + '</span>';
         b.appendChild(el('span', 'pal-name', d.name));
-        if (revealed[kind + ':' + d.id]) b.classList.add('is-known');
         b.addEventListener('pointerdown', onPalDown);
         // Keyboard activation drops the item into the middle of the tank.
         b.addEventListener('click', (e) => {
@@ -174,13 +185,9 @@ window.Tank = window.Tank || {};
     });
   }
 
-  function markKnown() {
-    els.palette.querySelectorAll('.pal-item').forEach((b) => {
-      b.classList.toggle('is-known', !!revealed[b.dataset.kind + ':' + b.dataset.id]);
-    });
-  }
-
   function inTank(x, y) {
+    // After results, fish can be moved but never dragged out of the tank.
+    if (postResults) return true;
     const r = els.drawer.getBoundingClientRect();
     return x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight && y < r.top - 4;
   }
@@ -204,12 +211,14 @@ window.Tank = window.Tank || {};
   }
 
   function onTankDown(ev) {
-    if (locked || drag || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    if ((locked && !postResults) || drag || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     const hit = ev.target.closest ? ev.target.closest('[data-uid]') : null;
     if (!hit) return;
     const ent = T.Swim.get(hit.dataset.uid);
     const c = ent && T.Swim.center(ent.uid);
     if (!c) return;
+    // While results show, only fish still in the tank (alive or dead) can be moved.
+    if (postResults && (ent.kind !== 'fish' || ent.mode === 'gone')) return;
     ev.preventDefault();
     beginPointer(ev, { type: 'move', uid: ent.uid, kind: ent.kind, id: ent.id, offX: c.x - ev.clientX, offY: c.y - ev.clientY });
   }
@@ -264,7 +273,7 @@ window.Tank = window.Tank || {};
       drag.ghost.classList.toggle('will-remove', !inside);
     } else {
       T.Swim.dragTo(drag.uid, x + drag.offX, y + drag.offY);
-      T.Swim.setRemoveHint(drag.uid, !inside);
+      T.Swim.setRemoveHint(drag.uid, !inside && !postResults);
     }
   }
 
@@ -415,10 +424,15 @@ window.Tank = window.Tank || {};
     els.results.classList.toggle('is-collapsed', on);
     els.resultsTab.setAttribute('aria-expanded', on ? 'false' : 'true');
     els.resultsTab.setAttribute('aria-label', on ? 'Show results' : 'Hide results');
+    // While collapsed, "Try again" takes the place of "Complete tank" in the top bar.
+    els.complete.hidden = on;
+    els.topTryAgain.hidden = !on;
   }
 
   UI.showResults = function (result, items) {
     setCollapsed(false);
+    postResults = true;
+    document.body.classList.add('has-results');
     els.summary.textContent = result.summary.text;
     els.issues.innerHTML = '';
     if (result.celebration) els.issues.appendChild(card('good card--hero', result.celebration.headline, result.celebration.body));
@@ -437,7 +451,6 @@ window.Tank = window.Tank || {};
       (it.kind === 'fish' ? fishIds : decorIds).push(it.id);
     });
     saveRevealed();
-    markKnown();
     if (fishIds.length) {
       els.meet.appendChild(el('h2', 'results-title', 'Meet your fish'));
       fishIds.forEach((id) => els.meet.appendChild(buildFact('fish', id)));
@@ -457,5 +470,7 @@ window.Tank = window.Tank || {};
   UI.hideResults = function () {
     els.results.classList.remove('is-open');
     setCollapsed(false);
+    postResults = false;
+    document.body.classList.remove('has-results');
   };
 })(window.Tank);

@@ -4,7 +4,8 @@ window.Tank = window.Tank || {};
 (function (T) {
   'use strict';
 
-  const state = T.state = { water: 'salt', temp: 'tropical', locked: false, result: null };
+  const DEFAULTS = { water: 'salt', temp: 'tropical' };
+  const state = T.state = { water: DEFAULTS.water, temp: DEFAULTS.temp, locked: false, result: null };
   let timers = [];
 
   function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
@@ -40,13 +41,20 @@ window.Tank = window.Tank || {};
     T.UI.showDrawer(true);
   }
 
+  // Revive everything in place and go back to editing the same tank.
   function onTryAgain() {
     T.Swim.revive();
     unlock();
   }
 
+  // Empty the tank and go back to the default water settings.
   function onStartOver() {
     T.Swim.clear();
+    state.water = DEFAULTS.water;
+    state.temp = DEFAULTS.temp;
+    T.Water.setSettings(state.water, state.temp);
+    T.UI.setSettings(state.water, state.temp);
+    T.UI.closeFact();
     unlock();
   }
 
@@ -77,6 +85,7 @@ window.Tank = window.Tank || {};
       });
     });
 
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => T.Swim.measureTopBar());
     document.body.classList.add('is-ready');
   }
 
