@@ -1,0 +1,583 @@
+window.Tank = window.Tank || {};
+
+// Placed items, layout and the swimming animation loop.
+(function (T) {
+  'use strict';
+
+  const Swim = T.Swim = {};
+  const L = T.layout = T.layout || {};
+  let fishLayer = null;
+  let decorLayer = null;
+  const fish = [];
+  const decor = [];
+  let seq = 0;
+  let order = 0;
+  let schools = {};
+  let timers = [];
+  let last = 0;
+  let time = 0;
+
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const has = (sp, b) => sp.swim.indexOf(b) !== -1;
+
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  T.computeLayout = function () {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const compact = W < 760 || H < 640;
+    const drawerH = compact ? 128 : 144;
+    const band = Math.max(48, (H - drawerH) * 0.14);
+    L.W = W;
+    L.H = H;
+    L.drawerH = drawerH;
+    L.floorTopY = H - drawerH - band;
+    L.decorBaseY = L.floorTopY + band * 0.62;
+    L.surfaceY = Math.max(30, H * 0.045);
+    L.floorFrac = (H - L.floorTopY) / H;
+    L.surfaceFrac = 1 - (L.surfaceY * 0.45) / H;
+    L.scale = clamp(Math.min(H / 900, W / 1280), 0.6, 1.3);
+    document.documentElement.style.setProperty('--drawer-h', drawerH + 'px');
+  };
+
+  function get(uid) {
+    for (let i = 0; i < fish.length; i++) if (fish[i].uid === uid) return fish[i];
+    for (let i = 0; i < decor.length; i++) if (decor[i].uid === uid) return decor[i];
+    return null;
+  }
+  Swim.get = get;
+
+  // ---- Fish ---------------------------------------------------------------
+
+  function sizeFish(e) {
+    e.w = e.sp.display * L.scale;
+    e.h = (e.w * e.art.h) / e.art.w;
+    e.el.style.width = e.w.toFixed(1) + 'px';
+    e.el.style.height = e.h.toFixed(1) + 'px';
+  }
+
+  function bounds(e) {
+    const hw = e.w * 0.5;
+    const hh = e.h * 0.5;
+    const minY = L.surfaceY + hh * 0.8;
+    const maxY = has(e.sp, 'bottom')
+      ? L.floorTopY + (L.decorBaseY - L.floorTopY) * 0.5 - hh * 0.75
+      : L.floorTopY - hh * 0.35;
+    return { minX: hw + 6, maxX: Math.max(hw + 6, L.W - hw - 6), minY: minY, maxY: Math.max(minY, maxY) };
+  }
+
+  function nearestAnemone(e) {
+    let best = null;
+    let bd = Infinity;
+    decor.forEach((d) => {
+      if (d.id !== 'anemone' || d.dead) return;
+      const dist = Math.abs(d.x - e.homeX);
+      if (dist < bd) { bd = dist; best = d; }
+    });
+    if (!best) return null;
+    return { x: best.x, y: L.decorBaseY - best.h * 0.6, w: best.w };
+  }
+
+  function pickTarget(e) {
+    const b = bounds(e);
+    const sp = e.sp;
+    const s = L.scale;
+    let hx = e.homeX;
+    let hy = e.homeY;
+    let R = (70 + sp.display * 0.9) * s;
+    let Ry = R * 0.3;
+    if (sp.id === 'clownfish') {
+      const an = nearestAnemone(e);
+      if (an) { hx = an.x; hy = an.y; R = Math.max(40 * s, an.w * 0.35); Ry = R * 0.5; }
+    }
+    if (e.stressed) { hy = Math.max(hy, b.maxY - 30 * s); R *= 1.2; Ry = 30 * s; }
+    e.side = -e.side;
+    let tx = hx + e.side * R * rand(0.4, 1);
+    let ty = hy + rand(-1, 1) * Ry;
+    if (tx < b.minX || tx > b.maxX) { e.side = -e.side; tx = hx + e.side * R * rand(0.4, 1); }
+    if (has(sp, 'bottom')) ty = b.maxY - rand(0, 4 * s);
+    e.tx = clamp(tx, b.minX, b.maxX);
+    e.ty = clamp(ty, b.minY, b.maxY);
+    e.timer = e.stressed ? rand(0.35, 0.9) : has(sp, 'hover') ? rand(6, 11) : rand(3, 7);
+  }
+
+  Swim.addFish = function (id, x, y) {
+    const sp = T.speciesById[id];
+    if (!sp) return null;
+    const art = T.Art.render('fish', id);
+    const el = document.createElement('div');
+    const uid = 'f' + (++seq);
+    el.className = 'fish';
+    el.dataset.uid = uid;
+    el.innerHTML = '<div class="fish-body">' + art.svg + '</div>';
+    const facing = Math.random() < 0.5 ? 1 : -1;
+    const e = {
+      uid: uid, kind: 'fish', id: id, sp: sp, el: el, art: art, order: ++order,
+      x: x, y: y, homeX: x, homeY: y, vx: 0, vy: 0, tx: x, ty: y,
+      facing: facing, face: facing, side: facing, tilt: 0,
+      timer: 0, tailPhase: rand(0, 6.28), bob: rand(0, 6.28), finPhase: rand(0, 6.28),
+      speedMul: rand(0.85, 1.15), burst: 0, hang: 0, snuffle: 0,
+      offX: 0, offY: 0, offTimer: 0,
+      mode: 'swim', stressed: false, roll: 1, puff: 0, wagAmp: 1, dragging: false,
+      huntQueue: null, huntT: 0, huntSpeed: 0, pause: 0
+    };
+    e.tail = el.querySelector('.tail');
+    e.fins = el.querySelectorAll('.fin');
+    sizeFish(e);
+    const b = bounds(e);
+    e.x = e.homeX = clamp(x, b.minX, b.maxX);
+    e.y = e.homeY = clamp(y, b.minY, b.maxY);
+    if (has(sp, 'bottom')) e.homeY = b.maxY;
+    pickTarget(e);
+    fishLayer.appendChild(el);
+    fish.push(e);
+    render(e, 0);
+    return uid;
+  };
+
+  function updateSchools(dt) {
+    const groups = {};
+    fish.forEach((e) => {
+      if (e.mode === 'swim' && !e.stressed && !e.dragging && has(e.sp, 'school')) (groups[e.id] = groups[e.id] || []).push(e);
+    });
+    Object.keys(schools).forEach((id) => { if (!groups[id]) delete schools[id]; });
+    Object.keys(groups).forEach((id) => {
+      const list = groups[id];
+      const g = schools[id] || (schools[id] = { tx: list[0].x, ty: list[0].y, timer: 0, side: 1, n: 0 });
+      g.n = list.length;
+      if (list.length < 2) return;
+      let mx = 0, my = 0, cx = 0, cy = 0;
+      list.forEach((e) => { mx += e.homeX; my += e.homeY; cx += e.x; cy += e.y; });
+      mx /= list.length; my /= list.length; cx /= list.length; cy /= list.length;
+      g.timer -= dt;
+      const s = L.scale;
+      if (g.timer <= 0 || Math.hypot(cx - g.tx, cy - g.ty) < 30 * s) {
+        const b = bounds(list[0]);
+        const R = (120 + 10 * list.length) * s;
+        g.side = -g.side;
+        g.tx = clamp(mx + g.side * R * rand(0.4, 1), b.minX, b.maxX);
+        g.ty = has(list[0].sp, 'bottom') ? b.maxY : clamp(my + rand(-1, 1) * R * 0.25, b.minY, b.maxY);
+        g.timer = rand(4, 8);
+      }
+    });
+  }
+
+  function separate(dt) {
+    for (let i = 0; i < fish.length; i++) {
+      const a = fish[i];
+      if (a.mode !== 'swim' || a.dragging) continue;
+      for (let j = i + 1; j < fish.length; j++) {
+        const b = fish[j];
+        if (b.mode !== 'swim' || b.dragging) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const min = (a.w + b.w) * 0.22;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min || d2 < 0.01) continue;
+        const d = Math.sqrt(d2);
+        const push = ((min - d) / min) * 40 * dt;
+        const ux = dx / d;
+        const uy = dy / d;
+        a.x -= ux * push * 0.5; a.y -= uy * push;
+        b.x += ux * push * 0.5; b.y += uy * push;
+      }
+    }
+  }
+
+  function steer(e, dt) {
+    const sp = e.sp;
+    const s = L.scale;
+    const b = bounds(e);
+    const g = schools[e.id];
+    const school = !e.stressed && has(sp, 'school') && g && g.n > 1;
+    if (school) {
+      e.offTimer -= dt;
+      if (e.offTimer <= 0) {
+        e.offX = rand(-1, 1) * (28 + g.n * 5) * s;
+        e.offY = rand(-1, 1) * (14 + g.n * 2) * s;
+        e.offTimer = rand(2, 5);
+      }
+      e.tx = clamp(g.tx + e.offX, b.minX, b.maxX);
+      e.ty = has(sp, 'bottom') ? b.maxY : clamp(g.ty + e.offY, b.minY, b.maxY);
+    } else {
+      e.timer -= dt;
+    }
+    let dx = e.tx - e.x;
+    let dy = e.ty - e.y;
+    let dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    if (!school && (dist < 10 * s || e.timer <= 0)) {
+      pickTarget(e);
+      dx = e.tx - e.x;
+      dy = e.ty - e.y;
+      dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    }
+    let speed = sp.speed * s * e.speedMul;
+    if (has(sp, 'dart')) {
+      if (e.burst > 0) { e.burst -= dt; speed *= 2.4; } else if (Math.random() < dt * 0.15) e.burst = rand(0.35, 0.7);
+    }
+    if (has(sp, 'hover')) {
+      if (e.hang > 0) { e.hang -= dt; speed *= 0.08; } else if (Math.random() < dt * 0.12) e.hang = rand(1.5, 4);
+    }
+    if (has(sp, 'bottom')) {
+      if (e.snuffle > 0) { e.snuffle -= dt; speed *= 0.15; } else if (Math.random() < dt * 0.2) e.snuffle = rand(0.6, 1.6);
+    }
+    if (e.stressed) speed *= 1.6 + Math.sin(time * 7 + e.bob) * 0.5;
+    const arrive = school ? clamp(dist / (30 * s), 0.25, 1.3) : clamp(dist / (50 * s), 0.15, 1);
+    const dvx = (dx / dist) * speed * arrive;
+    const dvy = (dy / dist) * speed * arrive * 0.65;
+    const k = Math.min(1, dt * (e.stressed ? 4 : 1.8));
+    e.vx += (dvx - e.vx) * k;
+    e.vy += (dvy - e.vy) * k;
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    e.x = clamp(e.x, b.minX, b.maxX);
+    e.y = clamp(e.y, b.minY, b.maxY);
+    if (e.vx > 3) e.facing = 1;
+    else if (e.vx < -3) e.facing = -1;
+    e.roll += (1 - e.roll) * Math.min(1, dt * 3);
+    e.wagAmp += (1 - e.wagAmp) * Math.min(1, dt * 2);
+  }
+
+  function updateDead(e, dt) {
+    const b = bounds(e);
+    e.vx *= 1 - Math.min(1, dt * 2);
+    e.vy += (-16 * L.scale - e.vy) * Math.min(1, dt * 0.8);
+    e.x += e.vx * dt;
+    e.y = Math.max(L.surfaceY + e.h * 0.15, e.y + e.vy * dt);
+    e.x = clamp(e.x, b.minX, b.maxX);
+    e.roll += (-1 - e.roll) * Math.min(1, dt * 2.2);
+    e.wagAmp *= 1 - Math.min(1, dt * 3);
+  }
+
+  function updateStunned(e, dt) {
+    e.vx *= 1 - Math.min(1, dt * 3);
+    e.vy *= 1 - Math.min(1, dt * 3);
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    e.wagAmp += (0.4 - e.wagAmp) * Math.min(1, dt * 3);
+  }
+
+  function eat(prey) {
+    prey.mode = 'gone';
+    prey.el.classList.add('is-eaten');
+  }
+
+  function updateHunt(e, dt) {
+    if (e.pause > 0) {
+      e.pause -= dt;
+      e.vx *= 0.9;
+      e.vy *= 0.9;
+      return;
+    }
+    const q = e.huntQueue || [];
+    while (q.length && q[0].mode === 'gone') q.shift();
+    const prey = q[0];
+    if (!prey) {
+      e.mode = 'swim';
+      e.huntQueue = null;
+      pickTarget(e);
+      return;
+    }
+    const dir = prey.x >= e.x ? 1 : -1;
+    const tx = prey.x - dir * e.w * 0.36;
+    const ty = prey.y;
+    const dx = tx - e.x;
+    const dy = ty - e.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    if (!e.huntSpeed) e.huntSpeed = Math.max(320 * L.scale, d / 0.55);
+    e.huntT += dt;
+    e.facing = dir;
+    if (d < 8 || e.huntT > 1.2) {
+      eat(prey);
+      q.shift();
+      e.puff = 0.55;
+      e.pause = 0.35;
+      e.huntSpeed = 0;
+      e.huntT = 0;
+      return;
+    }
+    const step = Math.min(d, e.huntSpeed * dt);
+    e.vx = (dx / d) * e.huntSpeed;
+    e.vy = (dy / d) * e.huntSpeed * 0.3;
+    e.x += (dx / d) * step;
+    e.y += (dy / d) * step;
+  }
+
+  function render(e, dt) {
+    const sp = e.sp;
+    const s = L.scale;
+    const step = dt * 4.2;
+    e.face += clamp(e.facing - e.face, -step, step);
+    let fx = e.face;
+    if (Math.abs(fx) < 0.06) fx = fx < 0 ? -0.06 : 0.06;
+    const sgn = e.face >= 0 ? 1 : -1;
+    let tilt = 0;
+    if (e.mode !== 'dead') tilt = clamp(Math.atan2(e.vy, Math.abs(e.vx) + 25) * 57.3 * 0.75, -20, 20) * sgn;
+    if (e.snuffle > 0 && e.mode === 'swim') tilt += 9 * sgn;
+    e.tilt += (tilt - e.tilt) * Math.min(1, dt * 5);
+    e.bob += dt * 1.7;
+    const bobY = e.mode === 'swim' ? Math.sin(e.bob) * 2.6 * s : 0;
+    let p = 1;
+    if (e.puff > 0) {
+      e.puff -= dt;
+      p = 1 + 0.14 * Math.sin(Math.PI * (1 - Math.max(0, e.puff) / 0.55));
+    }
+    const tx = e.x - e.w / 2;
+    const ty = e.y - e.h / 2 + bobY;
+    e.el.style.transform = 'translate3d(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px,0) rotate(' + e.tilt.toFixed(2) +
+      'deg) scale(' + (fx * p).toFixed(3) + ',' + (e.roll * p).toFixed(3) + ')';
+
+    const v = Math.sqrt(e.vx * e.vx + e.vy * e.vy) / (sp.speed * s + 1);
+    const struggle = e.dragging ? 2.2 : 1;
+    if (e.tail) {
+      e.tailPhase += dt * sp.anim.wag * (0.55 + Math.min(2.6, v) * 0.75) * struggle;
+      const a = Math.sin(e.tailPhase) * sp.anim.tail * e.wagAmp;
+      const sx = 1 - 0.16 * e.wagAmp * (0.5 - 0.5 * Math.cos(2 * e.tailPhase));
+      e.tail.style.transform = 'rotate(' + a.toFixed(2) + 'deg) scaleX(' + sx.toFixed(3) + ')';
+    }
+    if (e.fins.length && sp.anim.fin) {
+      e.finPhase += dt * (has(sp, 'hover') ? 3.2 : 2.4) * struggle;
+      for (let i = 0; i < e.fins.length; i++) {
+        e.fins[i].style.transform = 'rotate(' + (Math.sin(e.finPhase + i * 1.3) * sp.anim.fin * e.wagAmp).toFixed(2) + 'deg)';
+      }
+    }
+  }
+
+  // ---- Decor --------------------------------------------------------------
+
+  function sizeDecor(e) {
+    e.w = e.d.display * L.scale;
+    e.h = (e.w * e.art.h) / e.art.w;
+    e.el.style.width = e.w.toFixed(1) + 'px';
+    e.el.style.height = e.h.toFixed(1) + 'px';
+  }
+
+  function placeDecor(e) {
+    const top = e.dragY != null ? e.dragY - e.h * 0.5 : L.decorBaseY - e.h;
+    e.el.style.transform = 'translate3d(' + (e.x - e.w / 2).toFixed(1) + 'px,' + top.toFixed(1) + 'px,0)';
+    e.el.style.zIndex = String(10 + e.order);
+  }
+
+  Swim.addDecor = function (id, x, y) {
+    const d = T.decorById[id];
+    if (!d) return null;
+    const art = T.Art.render('decor', id);
+    const el = document.createElement('div');
+    const uid = 'd' + (++seq);
+    el.className = 'decor decor--' + d.type + ' no-anim';
+    el.dataset.uid = uid;
+    el.innerHTML = '<div class="decor-body">' + art.svg + '</div>';
+    const e = { uid: uid, kind: 'decor', id: id, d: d, el: el, art: art, order: ++order, x: x, dragY: y, dead: false, dragging: false };
+    sizeDecor(e);
+    e.x = clamp(x, e.w * 0.3, L.W - e.w * 0.3);
+    decorLayer.appendChild(el);
+    decor.push(e);
+    placeDecor(e);
+    void el.offsetWidth;
+    el.classList.remove('no-anim');
+    e.dragY = null;
+    placeDecor(e);
+    return uid;
+  };
+
+  // ---- Shared API ---------------------------------------------------------
+
+  Swim.init = function (fl, dl) {
+    fishLayer = fl;
+    decorLayer = dl;
+    requestAnimationFrame(frame);
+  };
+
+  Swim.items = function () {
+    return fish.concat(decor).sort((a, b) => a.order - b.order).map((e) => ({ uid: e.uid, kind: e.kind, id: e.id }));
+  };
+
+  Swim.fishCount = function () { return fish.length; };
+
+  Swim.center = function (uid) {
+    const e = get(uid);
+    if (!e) return null;
+    if (e.kind === 'fish') return { x: e.x, y: e.y };
+    return { x: e.x, y: e.dragY != null ? e.dragY : L.decorBaseY - e.h / 2 };
+  };
+
+  Swim.remove = function (uid, animate) {
+    const list = uid.charAt(0) === 'f' ? fish : decor;
+    const i = list.findIndex((e) => e.uid === uid);
+    if (i === -1) return;
+    const e = list[i];
+    list.splice(i, 1);
+    if (animate) {
+      e.el.classList.add('is-removing');
+      setTimeout(() => e.el.remove(), 350);
+    } else {
+      e.el.remove();
+    }
+  };
+
+  Swim.clear = function () {
+    clearTimers();
+    fish.concat(decor).forEach((e) => e.el.remove());
+    fish.length = 0;
+    decor.length = 0;
+    schools = {};
+  };
+
+  Swim.beginDrag = function (uid) {
+    const e = get(uid);
+    if (!e) return;
+    e.dragging = true;
+    e.el.classList.add('is-dragging');
+  };
+
+  Swim.dragTo = function (uid, x, y) {
+    const e = get(uid);
+    if (!e) return;
+    if (e.kind === 'fish') {
+      e.x = clamp(x, 0, L.W);
+      e.y = clamp(y, 0, L.H);
+      e.vx = 0;
+      e.vy = 0;
+    } else {
+      e.x = x;
+      e.dragY = y;
+      placeDecor(e);
+    }
+  };
+
+  Swim.setRemoveHint = function (uid, on) {
+    const e = get(uid);
+    if (e) e.el.classList.toggle('will-remove', on);
+  };
+
+  Swim.endDrag = function (uid) {
+    const e = get(uid);
+    if (!e) return;
+    e.dragging = false;
+    e.el.classList.remove('is-dragging', 'will-remove');
+    if (e.kind === 'fish') {
+      const b = bounds(e);
+      e.x = e.homeX = clamp(e.x, b.minX, b.maxX);
+      e.y = e.homeY = clamp(e.y, b.minY, b.maxY);
+      if (has(e.sp, 'bottom')) e.homeY = b.maxY;
+      pickTarget(e);
+    } else {
+      e.dragY = null;
+      e.x = clamp(e.x, e.w * 0.3, L.W - e.w * 0.3);
+      e.order = ++order;
+      placeDecor(e);
+    }
+  };
+
+  // Animates rule outcomes. Returns roughly how long the sequence takes, in ms.
+  Swim.playOutcomes = function (result) {
+    clearTimers();
+    const out = result.outcomes;
+    const hunts = {};
+    let end = 1800;
+    fish.forEach((e) => {
+      const o = out[e.uid];
+      if (!o) return;
+      if (o.status === 'eaten') {
+        const pred = o.eatenBy ? get(o.eatenBy) : null;
+        if (pred && pred.kind === 'fish') (hunts[pred.uid] = hunts[pred.uid] || []).push(e);
+        else later(() => eat(e), rand(200, 900));
+      } else if (o.status === 'dead') {
+        later(() => { e.mode = 'dead'; e.el.classList.add('is-dead'); }, rand(0, 900));
+      } else if (o.status === 'stressed') {
+        later(() => { e.stressed = true; e.timer = 0; e.el.classList.add('is-stressed'); }, rand(150, 1100));
+      }
+    });
+    Object.keys(hunts).forEach((pid) => {
+      const pred = get(pid);
+      const prey = hunts[pid];
+      prey.forEach((p) => { p.mode = 'stunned'; });
+      later(() => {
+        pred.mode = 'hunt';
+        pred.huntQueue = prey.slice();
+        pred.huntT = 0;
+        pred.huntSpeed = 0;
+        pred.pause = 0;
+      }, 250);
+      end = Math.max(end, 250 + prey.length * 950);
+    });
+    decor.forEach((d) => {
+      const o = out[d.uid];
+      if (!o || o.status === 'ok') return;
+      later(() => {
+        if (o.status === 'stressed') { d.el.classList.add('is-pale'); return; }
+        d.dead = true;
+        if (d.d.type === 'plant') d.el.classList.add('is-wilted');
+        else if (d.d.type !== 'hardscape') d.el.classList.add('is-bleached');
+      }, rand(100, 900));
+    });
+    return end + 400;
+  };
+
+  Swim.revive = function () {
+    clearTimers();
+    fish.forEach((e) => {
+      if (e.mode === 'gone') {
+        e.x = e.homeX;
+        e.y = e.homeY;
+        e.roll = 1;
+      }
+      e.mode = 'swim';
+      e.stressed = false;
+      e.puff = 0;
+      e.pause = 0;
+      e.huntQueue = null;
+      e.vx = 0;
+      e.vy = 0;
+      e.el.classList.remove('is-dead', 'is-stressed', 'is-eaten');
+      pickTarget(e);
+    });
+    decor.forEach((d) => {
+      d.dead = false;
+      d.el.classList.remove('is-bleached', 'is-wilted', 'is-pale');
+    });
+  };
+
+  Swim.resize = function (ow, oh) {
+    const rx = ow ? L.W / ow : 1;
+    const ry = oh ? L.H / oh : 1;
+    fish.forEach((e) => {
+      sizeFish(e);
+      e.x *= rx; e.homeX *= rx; e.tx *= rx;
+      e.y *= ry; e.homeY *= ry; e.ty *= ry;
+      const b = bounds(e);
+      e.x = clamp(e.x, b.minX, b.maxX);
+      e.y = clamp(e.y, b.minY, b.maxY);
+      e.homeX = clamp(e.homeX, b.minX, b.maxX);
+      e.homeY = has(e.sp, 'bottom') ? b.maxY : clamp(e.homeY, b.minY, b.maxY);
+    });
+    decor.forEach((d) => {
+      sizeDecor(d);
+      d.x = clamp(d.x * rx, d.w * 0.3, L.W - d.w * 0.3);
+      placeDecor(d);
+    });
+    schools = {};
+  };
+
+  function frame(now) {
+    const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
+    last = now;
+    time += dt;
+    updateSchools(dt);
+    separate(dt);
+    for (let i = 0; i < fish.length; i++) {
+      const e = fish[i];
+      if (e.mode === 'gone') continue;
+      if (!e.dragging) {
+        if (e.mode === 'swim') steer(e, dt);
+        else if (e.mode === 'dead') updateDead(e, dt);
+        else if (e.mode === 'stunned') updateStunned(e, dt);
+        else if (e.mode === 'hunt') updateHunt(e, dt);
+      }
+      render(e, dt);
+    }
+    requestAnimationFrame(frame);
+  }
+})(window.Tank);

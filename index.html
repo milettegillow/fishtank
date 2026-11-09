@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Build a fish tank</title>
+  <meta name="description" content="Drag fish, coral and plants into an aquarium, set the water and temperature, and find out what survives. Learn about real fish through trial and error.">
+  <meta name="theme-color" content="#0b4f63">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Build a fish tank">
+  <meta property="og:description" content="Drag fish, coral and plants into an aquarium, set the water and temperature, and find out what survives.">
+  <meta property="og:site_name" content="Build a fish tank">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Build a fish tank">
+  <meta name="twitter:description" content="Drag fish, coral and plants into an aquarium and find out what survives.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="tank" id="tank">
+    <canvas class="water" id="water"></canvas>
+    <div class="water-fallback" id="waterFallback"></div>
+    <div class="bubbles" id="bubbles"></div>
+    <div class="decor-layer" id="decorLayer"></div>
+    <div class="fish-layer" id="fishLayer"></div>
+    <div class="fx-layer" id="fxLayer"></div>
+    <div class="tank-glass"></div>
+  </main>
+
+  <header class="topbar">
+    <h1 class="title glass">Build a fish tank</h1>
+    <div class="controls">
+      <div class="seg glass" id="waterSeg" role="radiogroup" aria-label="Water">
+        <button type="button" role="radio" data-value="fresh">Fresh</button>
+        <button type="button" role="radio" data-value="salt">Salt</button>
+      </div>
+      <div class="seg glass" id="tempSeg" role="radiogroup" aria-label="Temperature">
+        <span class="temp-readout" id="tempReadout">26°C</span>
+        <button type="button" role="radio" data-value="cold">Cold</button>
+        <button type="button" role="radio" data-value="warm">Warm</button>
+        <button type="button" role="radio" data-value="tropical">Tropical</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="completeBtn" disabled>Complete tank</button>
+    </div>
+  </header>
+
+  <section class="drawer glass" id="drawer" aria-label="Palette">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-tab="fish">Fish</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="decor">Decor</button>
+    </div>
+    <div class="palette" id="palette"></div>
+  </section>
+
+  <aside class="results glass" id="results" aria-labelledby="resultsSummary" aria-live="polite">
+    <div class="results-scroll" id="resultsScroll">
+      <h2 class="results-summary" id="resultsSummary" tabindex="-1"></h2>
+      <div class="results-issues" id="resultsIssues"></div>
+      <div class="results-meet" id="resultsMeet"></div>
+    </div>
+    <div class="results-actions">
+      <button type="button" class="btn btn-primary" id="tryAgainBtn">Try again</button>
+      <button type="button" class="btn btn-ghost" id="startOverBtn">Start over</button>
+    </div>
+  </aside>
+
+  <div class="factpop glass" id="factPop" role="dialog" aria-label="Fact card"></div>
+
+  <script src="js/species.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/caustics.js"></script>
+  <script src="js/swim.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
